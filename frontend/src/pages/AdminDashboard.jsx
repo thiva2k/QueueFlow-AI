@@ -52,6 +52,27 @@ function minutesBetween(start, end = new Date()) {
   return Math.max(0, Math.floor((end.getTime() - new Date(start).getTime()) / 60000));
 }
 
+function minutesMovedLater(before, after) {
+  if (!before || !after) return 0;
+  return Math.max(0, Math.round((new Date(after).getTime() - new Date(before).getTime()) / 60000));
+}
+
+function predictionDeltaText(previousToken, updatedToken) {
+  if (!previousToken || !updatedToken) return "";
+  const serviceDelta = minutesMovedLater(
+    previousToken.estimated_service_time,
+    updatedToken.estimated_service_time
+  );
+  const arrivalDelta = minutesMovedLater(
+    previousToken.recommended_arrival_time,
+    updatedToken.recommended_arrival_time
+  );
+  const parts = [];
+  if (serviceDelta) parts.push(`Estimated service moved +${serviceDelta} min`);
+  if (arrivalDelta) parts.push(`Arrival moved +${arrivalDelta} min`);
+  return parts.join(". ");
+}
+
 function serviceName(servicesById, serviceId) {
   return servicesById.get(serviceId)?.name || "Unknown service";
 }
@@ -147,10 +168,12 @@ export default function AdminDashboard() {
       setTokens(tokenData);
       setLastUpdated(new Date());
       setLoading(false);
+      return { queueData, serviceData, counterData, tokenData };
     } catch (error) {
       setLoading(false);
       setBackendConnected(false);
       setMessage({ type: "error", text: error.message });
+      return null;
     } finally {
       if (!silent) setRefreshing(false);
     }
@@ -172,7 +195,7 @@ export default function AdminDashboard() {
     return () => window.clearInterval(poller);
   }, [actionKey, fetchDashboard]);
 
-  async function runAction(key, pendingText, action, successText) {
+  async function runAction(key, pendingText, action, successText, options = {}) {
     setActionKey(key);
     setMessage({ type: "info", text: `${pendingText}...` });
     try {
@@ -182,11 +205,15 @@ export default function AdminDashboard() {
       } catch {
         // Recalculation is a best-effort refresh helper after mutations.
       }
-      await fetchDashboard();
+      const refreshed = await fetchDashboard();
       const finalMessage = successText || `${pendingText} completed.`;
       setMessage({ type: "success", text: finalMessage });
       if (key.startsWith("delay-") || key === "recalculate") {
-        setLastPredictionEvent("Prediction updated. Citizen arrival time adjusted.");
+        const updatedToken = refreshed?.queueData?.waiting?.find(
+          (token) => token.id === options.predictionTokenSnapshot?.id
+        );
+        const deltaText = predictionDeltaText(options.predictionTokenSnapshot, updatedToken);
+        setLastPredictionEvent(deltaText || "Prediction updated. Citizen arrival time adjusted.");
       } else if (key === "reset") {
         setLastPredictionEvent("");
       }
@@ -209,6 +236,12 @@ export default function AdminDashboard() {
       nic_or_phone: `077${Math.floor(1000000 + Math.random() * 9000000)}`,
       service_id: service.id,
     });
+  }
+
+  function handleResetDemo() {
+    const confirmed = window.confirm("Reset demo data? This will clear current demo queue state.");
+    if (!confirmed) return;
+    runAction("reset", "Reset demo data", () => api.resetDemo());
   }
 
   function renderCounterActions(counter, currentToken) {
@@ -311,7 +344,8 @@ export default function AdminDashboard() {
                 `delay-5-${currentToken.id}`,
                 `Simulate +5 minute delay for ${currentToken.token_number}`,
                 () => api.simulateDelay(currentToken.id, 5),
-                "Prediction updated. Citizen arrival time adjusted."
+                "Prediction updated. Citizen arrival time adjusted.",
+                { predictionTokenSnapshot: nextWaitingToken }
               )
             }
           >
@@ -327,7 +361,8 @@ export default function AdminDashboard() {
                 `delay-10-${currentToken.id}`,
                 `Simulate +10 minute delay for ${currentToken.token_number}`,
                 () => api.simulateDelay(currentToken.id, 10),
-                "Prediction updated. Citizen arrival time adjusted."
+                "Prediction updated. Citizen arrival time adjusted.",
+                { predictionTokenSnapshot: nextWaitingToken }
               )
             }
           >
@@ -395,7 +430,7 @@ export default function AdminDashboard() {
             variant="secondary"
             busy={actionKey === "reset"}
             locked={actionLocked}
-            onClick={() => runAction("reset", "Reset demo data", () => api.resetDemo())}
+            onClick={handleResetDemo}
           >
             Reset Demo Data
           </ActionButton>
@@ -661,7 +696,7 @@ export default function AdminDashboard() {
             variant="secondary"
             busy={actionKey === "reset"}
             locked={actionLocked}
-            onClick={() => runAction("reset", "Reset demo data", () => api.resetDemo())}
+            onClick={handleResetDemo}
           >
             Reset Demo Data
           </ActionButton>

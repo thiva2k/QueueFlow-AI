@@ -38,6 +38,7 @@ function DisplayStatus({ status }) {
 }
 
 export default function PublicDisplay() {
+  const kioskMode = new URLSearchParams(window.location.search).get("kiosk") === "true";
   const [queue, setQueue] = useState(null);
   const [services, setServices] = useState([]);
   const [counters, setCounters] = useState([]);
@@ -151,11 +152,12 @@ export default function PublicDisplay() {
   }
 
   return (
-    <main className="display-shell">
+    <main className={`display-shell ${kioskMode ? "kiosk-display" : ""}`}>
       <header className="display-header">
         <div>
           <p className="eyebrow">QueueFlow AI Public Display</p>
           <h1>Service Office Queue</h1>
+          {kioskMode ? <p className="display-kiosk-label">Kiosk mode</p> : null}
         </div>
         <div className="display-header-actions">
           <button className="action-button secondary" type="button" onClick={enterFullscreen} data-testid="display-fullscreen">

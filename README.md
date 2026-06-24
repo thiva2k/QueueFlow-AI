@@ -11,6 +11,7 @@ Citizen booking:  http://127.0.0.1:5173/book
 Token status:     http://127.0.0.1:5173/token/A-021
 Admin dashboard:  http://127.0.0.1:5173/admin
 Public display:   http://127.0.0.1:5173/display
+Kiosk display:    http://127.0.0.1:5173/display?kiosk=true
 ```
 
 ## Project Structure
@@ -47,11 +48,11 @@ Open `http://127.0.0.1:5173/book`.
 2. Open `/admin`, `/book`, and `/display` in separate tabs.
 3. In `/admin`, click `Reset Demo Data`.
 4. In `/book`, create a citizen token.
-5. Show the booking receipt with token number, estimated service time, recommended arrival time, QR code, and Copy Link.
+5. Show the booking receipt with token number, estimated service time, recommended arrival time, real QR code, and Copy Link.
 6. Click `Open Status` to view `/token/{tokenNumber}`.
 7. In `/admin`, use Counter 3: `Call Next`, `Start Serving`, then `Simulate +10 Delay`.
-8. Confirm the citizen status page updates both estimated service time and recommended arrival time.
-9. Confirm `/display` shows now-serving/called counters, next tokens, average wait, current time, and the message `Please proceed only when your token is called.`
+8. Confirm the admin Prediction Engine and citizen status page show the delay impact, for example `Arrival moved +10 min`.
+9. Confirm `/display?kiosk=true` shows now-serving/called counters, next tokens, average wait, current time, and the message `Please proceed only when your token is called.`
 
 ## Prediction Engine
 
@@ -63,6 +64,23 @@ QueueFlow AI recalculates future service estimates from:
 - delay from currently serving tokens that exceed expected duration
 
 The recommended arrival time is calculated 15 minutes before the predicted service time, so citizens arrive based on the live queue, not a fixed appointment guess.
+
+When the demo simulates a service delay, QueueFlow AI highlights the visible prediction movement:
+
+- `Estimated service moved +10 min`
+- `Arrival moved +10 min`
+
+This is the core demo moment: judges can immediately see the citizen's arrival recommendation move later after an officer simulates a counter delay.
+
+## Citizen QR Sharing
+
+After a citizen books a token, the receipt shows a real QR code generated from the current frontend origin:
+
+```text
+http://127.0.0.1:5173/token/{tokenNumber}
+```
+
+The `Copy Link` button remains available for demos where scanning is not convenient.
 
 ## UI/UX Direction
 
@@ -105,7 +123,7 @@ Browser smoke prerequisites: backend venv installed, frontend dependencies insta
 - No login/authentication.
 - No real SMS, WhatsApp, payment, or ML model.
 - Updates use polling instead of WebSockets.
-- QR visual is generated locally for demo sharing; the copyable link is the authoritative status URL.
+- QR codes are generated in the browser for local demo sharing.
 
 ## Future Improvements
 
@@ -114,4 +132,4 @@ Browser smoke prerequisites: backend venv installed, frontend dependencies insta
 - Department/branch configuration.
 - Historical wait-time analytics.
 - WebSocket updates for public display and citizen pages.
-- Kiosk/fullscreen hardening for production displays.
+- Production kiosk hardening for locked-down lobby devices.

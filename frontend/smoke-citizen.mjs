@@ -122,8 +122,9 @@ async function main() {
 
     const display = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     attachDiagnostics(display);
-    await display.goto(`${frontendUrl}/display`, { waitUntil: "networkidle" });
+    await display.goto(`${frontendUrl}/display?kiosk=true`, { waitUntil: "networkidle" });
     await display.getByRole("heading", { name: "Service Office Queue" }).waitFor({ timeout: 30000 });
+    await display.getByText("Kiosk mode").waitFor();
     await display.getByText("Please proceed only when your token is called.").waitFor();
     await display.getByTestId("display-fullscreen").waitFor();
     await display.getByTestId("display-fullscreen").click();
@@ -161,6 +162,7 @@ async function main() {
     await page.bringToFront();
     await waitForChangedText(estimatedLocator, beforeEstimate);
     await waitForChangedText(arrivalLocator, beforeArrival);
+    await page.locator(".citizen-update-notice", { hasText: /Arrival moved \+\d+ min/ }).waitFor({ timeout: 10000 });
     await page.getByText("QueueFlow AI continuously recalculates").waitFor();
 
     await display.bringToFront();

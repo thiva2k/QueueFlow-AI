@@ -97,6 +97,7 @@ async function main() {
     }
     await page.getByTestId("demo-steps").waitFor();
     await page.getByTestId("demo-health-checklist").waitFor();
+    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Reset Demo Data" }).first().click();
     await page.getByText("Reset demo data completed.").waitFor({ timeout: 10000 });
     await page.getByRole("heading", { name: "Waiting Citizens" }).waitFor();
@@ -110,6 +111,7 @@ async function main() {
     await counter3.getByText("Being Served").waitFor();
     await counter3.getByRole("button", { name: "Simulate +10 Delay" }).click();
     await page.locator(".message-bar.success", { hasText: "Prediction updated. Citizen arrival time adjusted." }).waitFor({ timeout: 10000 });
+    await page.locator(".prediction-update-note", { hasText: /Arrival moved \+\d+ min/ }).waitFor({ timeout: 10000 });
     await counter3.getByRole("button", { name: "Complete" }).click();
     await counter3.getByText("Ready for next citizen").waitFor({ timeout: 10000 });
     await page.getByRole("button", { name: "Add Random Token" }).click();
