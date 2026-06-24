@@ -126,6 +126,8 @@ async function main() {
     await display.getByRole("heading", { name: "Service Office Queue" }).waitFor({ timeout: 30000 });
     await display.getByText("Please proceed only when your token is called.").waitFor();
     await display.getByTestId("display-fullscreen").waitFor();
+    await display.getByTestId("display-fullscreen").click();
+    await display.locator(".display-mode-note").waitFor({ timeout: 10000 });
     await display.getByRole("heading", { name: "Now Serving" }).waitFor();
     await display.getByRole("heading", { name: "Next Tokens" }).waitFor();
     await display.getByText("Counter 3").waitFor();
@@ -140,10 +142,20 @@ async function main() {
     await counter3.getByText("Ready for next citizen").waitFor();
     await counter3.getByRole("button", { name: "Call Next" }).click();
     await counter3.getByText("Called to Counter", { exact: true }).waitFor();
+    const calledTokenNumber = await counter3.locator(".counter-state-block.called strong").innerText();
+    await display.bringToFront();
+    const displayCounter3 = display.locator(".display-counter-card", { hasText: "Counter 3" });
+    await displayCounter3.getByText(calledTokenNumber).waitFor({ timeout: 12000 });
+    await displayCounter3.getByText("Called to Counter").waitFor({ timeout: 12000 });
+    await admin.bringToFront();
     await counter3.getByRole("button", { name: "Start Serving" }).click();
     await counter3.getByText("Being Served").waitFor();
+    await display.bringToFront();
+    await displayCounter3.getByText(calledTokenNumber).waitFor({ timeout: 12000 });
+    await displayCounter3.getByText("Being Served").waitFor({ timeout: 12000 });
+    await admin.bringToFront();
     await counter3.getByRole("button", { name: "Simulate +10 Delay" }).click();
-    await admin.getByText("Delay simulated. Future arrival predictions updated.").waitFor({ timeout: 10000 });
+    await admin.locator(".message-bar.success", { hasText: "Prediction updated. Citizen arrival time adjusted." }).waitFor({ timeout: 10000 });
     await admin.close();
 
     await page.bringToFront();

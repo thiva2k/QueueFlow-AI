@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, MapPin, RefreshCcw, Ticket, Users } from "lucide-react";
 import { api } from "../api.js";
 
@@ -39,18 +39,22 @@ function serviceName(servicesById, serviceId) {
   return servicesById.get(serviceId)?.name || "Unknown service";
 }
 
-function buildGuidance(token, now) {
+function buildGuidance(token, now, assignedCounter) {
   if (!token) return { tone: "info", title: "Looking up your token", text: "We are checking the live queue." };
 
   if (token.status === "called") {
     return {
       tone: "urgent",
       title: "Your token has been called",
-      text: "Please proceed to the counter.",
+      text: `Please proceed to ${assignedCounter?.name || "the assigned counter"}.`,
     };
   }
   if (token.status === "serving") {
-    return { tone: "success", title: "You are now being served", text: "Your service is currently in progress." };
+    return {
+      tone: "success",
+      title: "You are now being served",
+      text: `Your service is currently in progress${assignedCounter?.name ? ` at ${assignedCounter.name}` : ""}.`,
+    };
   }
   if (token.status === "completed") {
     return { tone: "success", title: "Service completed", text: "Your service has been completed." };
@@ -92,6 +96,14 @@ function buildGuidance(token, now) {
   };
 }
 
+function peopleAheadLabel(token) {
+  if (!token) return "-";
+  if (token.status === "serving") return "Now serving";
+  if (token.status === "completed" || token.status === "missed") return "Closed";
+  if (token.status === "called") return "Called";
+  return token.people_ahead ?? "-";
+}
+
 function queuePosition(queue, token) {
   if (!queue || !token) return token?.people_ahead == null ? "-" : token.people_ahead + 1;
   const futureTokens = [...(queue.called || []), ...(queue.waiting || [])];
@@ -109,15 +121,23 @@ function StatusBadge({ status }) {
 export default function CitizenTokenStatus({ tokenNumber }) {
   const [token, setToken] = useState(null);
   const [services, setServices] = useState([]);
+  const [counters, setCounters] = useState([]);
   const [queue, setQueue] = useState(null);
   const [now, setNow] = useState(new Date());
   const [lastUpdated, setLastUpdated] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [errorStatus, setErrorStatus] = useState(null);
+  const [predictionNotice, setPredictionNotice] = useState("");
+  const previousPredictionRef = useRef(null);
 
   const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
-  const guidance = useMemo(() => buildGuidance(token, now), [now, token]);
+  const assignedCounter = useMemo(
+    () => counters.find((counter) => counter.current_token_id === token?.id) || null,
+    [counters, token]
+  );
+  const guidance = useMemo(() => buildGuidance(token, now, assignedCounter), [assignedCounter, now, token]);
   const position = useMemo(() => queuePosition(queue, token), [queue, token]);
 
   const fetchStatus = useCallback(
@@ -129,18 +149,36 @@ export default function CitizenTokenStatus({ tokenNumber }) {
       }
       if (!silent) setRefreshing(true);
       try {
-        const [tokenData, serviceData, queueData] = await Promise.all([
+        const [tokenData, serviceData, counterData, queueData] = await Promise.all([
           api.getTokenByNumber(tokenNumber.toUpperCase()),
           api.getServices(),
+          api.getCounters(),
           api.getQueueStatus(),
         ]);
+        const nextPrediction = {
+          estimated: tokenData.estimated_service_time,
+          arrival: tokenData.recommended_arrival_time,
+        };
+        const previousPrediction = previousPredictionRef.current;
+        if (
+          silent &&
+          previousPrediction &&
+          tokenData.status === "waiting" &&
+          (previousPrediction.estimated !== nextPrediction.estimated || previousPrediction.arrival !== nextPrediction.arrival)
+        ) {
+          setPredictionNotice("Prediction updated. Citizen arrival time adjusted.");
+        }
+        previousPredictionRef.current = nextPrediction;
         setToken(tokenData);
         setServices(serviceData);
+        setCounters(counterData);
         setQueue(queueData);
         setLastUpdated(new Date());
         setError("");
+        setErrorStatus(null);
       } catch (statusError) {
         setError(statusError.message || "Could not load this token.");
+        setErrorStatus(statusError.status || null);
       } finally {
         setLoading(false);
         if (!silent) setRefreshing(false);
@@ -151,6 +189,8 @@ export default function CitizenTokenStatus({ tokenNumber }) {
 
   useEffect(() => {
     fetchStatus();
+    setPredictionNotice("");
+    previousPredictionRef.current = null;
   }, [fetchStatus]);
 
   useEffect(() => {
@@ -180,7 +220,7 @@ export default function CitizenTokenStatus({ tokenNumber }) {
       <main className="citizen-shell">
         <section className="status-error-panel">
           <AlertCircle size={28} aria-hidden="true" />
-          <h1>Token not found</h1>
+          <h1>{errorStatus === 404 ? "Token not found" : "Queue status unavailable"}</h1>
           <p>{error}</p>
           <a className="citizen-primary link-button" href="/">
             Book a new token
@@ -211,6 +251,12 @@ export default function CitizenTokenStatus({ tokenNumber }) {
         </div>
       ) : null}
 
+      {predictionNotice ? (
+        <div className="message-bar success citizen-update-notice" role="status" aria-live="polite">
+          {predictionNotice}
+        </div>
+      ) : null}
+
       <section className="token-status-grid">
         <article className="token-main-card">
           <div className="token-card-header">
@@ -235,7 +281,11 @@ export default function CitizenTokenStatus({ tokenNumber }) {
             </div>
             <div>
               <dt>People ahead</dt>
-              <dd>{token?.people_ahead ?? "-"}</dd>
+              <dd>{peopleAheadLabel(token)}</dd>
+            </div>
+            <div>
+              <dt>Counter</dt>
+              <dd>{assignedCounter?.name || (["called", "serving"].includes(token?.status) ? "Assigning counter" : "-")}</dd>
             </div>
           </dl>
         </article>
@@ -253,7 +303,7 @@ export default function CitizenTokenStatus({ tokenNumber }) {
         <article className="prediction-card" data-testid="token-people-ahead">
           <Users size={22} aria-hidden="true" />
           <span>People Ahead</span>
-          <strong>{token?.people_ahead ?? "-"}</strong>
+          <strong>{peopleAheadLabel(token)}</strong>
         </article>
       </section>
 
