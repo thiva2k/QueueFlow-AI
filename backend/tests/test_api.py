@@ -124,7 +124,9 @@ def test_create_token_returns_prediction_fields(tmp_path):
 def test_admin_queue_actions_and_counter_pause_recalculate_predictions(tmp_path):
     client = make_client(tmp_path)
     seed_demo(client)
-    counter = client.get("/counters").json()[0]
+    counters = client.get("/counters").json()
+    counter = counters[0]
+    idle_counter = counters[1]
 
     called = client.post(f"/admin/call-next/{counter['id']}").json()
     assert called["status"] == "called"
@@ -133,7 +135,7 @@ def test_admin_queue_actions_and_counter_pause_recalculate_predictions(tmp_path)
     assert started["status"] == "serving"
 
     before = client.get("/tokens/by-number/A-020").json()["estimated_service_time"]
-    pause_response = client.patch(f"/counters/{counter['id']}/pause")
+    pause_response = client.patch(f"/counters/{idle_counter['id']}/pause")
     assert pause_response.status_code == 200
     after = client.get("/tokens/by-number/A-020").json()["estimated_service_time"]
 
@@ -142,6 +144,39 @@ def test_admin_queue_actions_and_counter_pause_recalculate_predictions(tmp_path)
     completed = client.post(f"/admin/complete-token/{counter['id']}/{called['id']}").json()
     assert completed["status"] == "completed"
     assert completed["actual_duration_minutes"] is not None
+
+
+def test_pause_counter_rejects_open_token(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+    called_pause = client.patch(f"/counters/{counter['id']}/pause")
+    assert called_pause.status_code == 400
+    assert "Clear the current token" in called_pause.json()["detail"]
+
+    client.post(f"/admin/start-token/{counter['id']}/{called['id']}")
+    serving_pause = client.patch(f"/counters/{counter['id']}/pause")
+    assert serving_pause.status_code == 400
+    assert "Clear the current token" in serving_pause.json()["detail"]
+
+
+def test_call_next_with_empty_queue_returns_clear_error(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+    tokens = client.get("/tokens").json()
+
+    for token in tokens:
+        token_id = token["id"]
+        db_token = client.get(f"/tokens/{token_id}").json()
+        if db_token["status"] == "waiting":
+            client.post(f"/admin/miss-token/{counter['id']}/{token_id}")
+
+    response = client.post(f"/admin/call-next/{counter['id']}")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No waiting tokens"
 
 
 def test_delayed_serving_token_pushes_future_predictions_later(tmp_path):
@@ -182,6 +217,25 @@ def test_simulate_delay_accepts_extra_minutes(tmp_path):
     assert after_five["estimated_service_time"] > before["estimated_service_time"]
     delay_gap = parse_iso(after_ten["estimated_service_time"]) - parse_iso(after_five["estimated_service_time"])
     assert delay_gap.total_seconds() >= 4 * 60
+
+
+def test_simulate_delay_rejects_non_serving_and_invalid_minutes(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+
+    non_serving_delay = client.post(f"/admin/demo/simulate-delay/{called['id']}?extra_minutes=10")
+    assert non_serving_delay.status_code == 400
+    assert "Only serving tokens" in non_serving_delay.json()["detail"]
+
+    client.post(f"/admin/start-token/{counter['id']}/{called['id']}")
+
+    too_low = client.post(f"/admin/demo/simulate-delay/{called['id']}?extra_minutes=0")
+    too_high = client.post(f"/admin/demo/simulate-delay/{called['id']}?extra_minutes=121")
+
+    assert too_low.status_code == 422
+    assert too_high.status_code == 422
 
 
 def test_admin_rejects_busy_counter_and_wrong_counter_completion(tmp_path):

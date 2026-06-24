@@ -5,9 +5,10 @@ import { API_BASE_URL, api } from "../api.js";
 const POLL_INTERVAL_MS = 4000;
 
 const TOKEN_STATUS_LABELS = {
-  called: "Proceed to Counter",
+  called: "Called to Counter",
   serving: "Being Served",
   waiting: "Waiting",
+  paused: "Paused",
 };
 
 function formatTime(value) {
@@ -87,18 +88,20 @@ export default function PublicDisplay() {
   }, [loadDisplay]);
 
   useEffect(() => {
-    const activeIds = new Set(activeTokens.map((token) => token.id));
+    const activeKeys = new Set(activeTokens.map((token) => `${token.id}:${token.status}`));
     if (previousActiveIds.current) {
-      const newIds = [...activeIds].filter((id) => !previousActiveIds.current.has(id));
-      if (newIds.length) {
-        setHighlightedIds(new Set(newIds));
+      const changedTokenIds = activeTokens
+        .filter((token) => !previousActiveIds.current.has(`${token.id}:${token.status}`))
+        .map((token) => token.id);
+      if (changedTokenIds.length) {
+        setHighlightedIds(new Set(changedTokenIds));
         playSafeBeep();
         const clearTimer = window.setTimeout(() => setHighlightedIds(new Set()), 3200);
-        previousActiveIds.current = activeIds;
+        previousActiveIds.current = activeKeys;
         return () => window.clearTimeout(clearTimer);
       }
     }
-    previousActiveIds.current = activeIds;
+    previousActiveIds.current = activeKeys;
   }, [activeTokens]);
 
   async function enterFullscreen() {
@@ -211,7 +214,7 @@ export default function PublicDisplay() {
             {counters.map((counter) => {
               const token = counter.current_token_id ? tokensById.get(counter.current_token_id) : null;
               const isPublicToken = token && ["called", "serving"].includes(token.status);
-              const displayState = isPublicToken ? token.status : "ready";
+              const displayState = isPublicToken ? token.status : counter.status === "paused" ? "paused" : "ready";
 
               return (
                 <article
@@ -226,6 +229,12 @@ export default function PublicDisplay() {
                       <strong>{token.token_number}</strong>
                       <DisplayStatus status={token.status} />
                       <p>{serviceName(servicesById, token.service_id)}</p>
+                    </>
+                  ) : counter.status === "paused" ? (
+                    <>
+                      <strong>Paused</strong>
+                      <DisplayStatus status="paused" />
+                      <p>This counter is temporarily unavailable.</p>
                     </>
                   ) : (
                     <>

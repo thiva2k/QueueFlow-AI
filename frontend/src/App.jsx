@@ -66,7 +66,7 @@ export default function App() {
 
   return (
     <>
-      <AppNav route={route} onNavigate={navigate} />
+      {route.name !== "display" ? <AppNav route={route} onNavigate={navigate} /> : null}
       {page}
     </>
   );

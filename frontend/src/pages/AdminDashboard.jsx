@@ -119,6 +119,8 @@ export default function AdminDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionKey, setActionKey] = useState("");
   const [message, setMessage] = useState({ type: "info", text: "Dashboard ready." });
+  const [backendConnected, setBackendConnected] = useState(false);
+  const [lastPredictionEvent, setLastPredictionEvent] = useState("");
 
   const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const tokensById = useMemo(() => buildTokenMap(queue, tokens), [queue, tokens]);
@@ -131,12 +133,14 @@ export default function AdminDashboard() {
   const fetchDashboard = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setRefreshing(true);
     try {
-      const [queueData, serviceData, counterData, tokenData] = await Promise.all([
+      const [, queueData, serviceData, counterData, tokenData] = await Promise.all([
+        api.health(),
         api.getQueueStatus(),
         api.getServices(),
         api.getCounters(),
         api.getTokens(),
       ]);
+      setBackendConnected(true);
       setQueue(queueData);
       setServices(serviceData);
       setCounters(counterData);
@@ -145,6 +149,7 @@ export default function AdminDashboard() {
       setLoading(false);
     } catch (error) {
       setLoading(false);
+      setBackendConnected(false);
       setMessage({ type: "error", text: error.message });
     } finally {
       if (!silent) setRefreshing(false);
@@ -178,7 +183,13 @@ export default function AdminDashboard() {
         // Recalculation is a best-effort refresh helper after mutations.
       }
       await fetchDashboard();
-      setMessage({ type: "success", text: successText || `${pendingText} completed.` });
+      const finalMessage = successText || `${pendingText} completed.`;
+      setMessage({ type: "success", text: finalMessage });
+      if (key.startsWith("delay-") || key === "recalculate") {
+        setLastPredictionEvent("Prediction updated. Citizen arrival time adjusted.");
+      } else if (key === "reset") {
+        setLastPredictionEvent("");
+      }
     } catch (error) {
       await fetchDashboard({ silent: true });
       setMessage({ type: "error", text: error.message });
@@ -215,15 +226,17 @@ export default function AdminDashboard() {
     }
 
     if (!currentToken) {
+      const noWaitingCitizens = waitingTokens.length === 0;
       return (
         <>
           <ActionButton
             icon={RotateCw}
             busy={actionKey === `call-${counter.id}`}
             locked={actionLocked}
+            disabled={noWaitingCitizens}
             onClick={() => runAction(`call-${counter.id}`, `Call next at ${counter.name}`, () => api.callNext(counter.id))}
           >
-            Call Next
+            {noWaitingCitizens ? "No Waiting Citizens" : "Call Next"}
           </ActionButton>
           <ActionButton
             icon={Pause}
@@ -298,7 +311,7 @@ export default function AdminDashboard() {
                 `delay-5-${currentToken.id}`,
                 `Simulate +5 minute delay for ${currentToken.token_number}`,
                 () => api.simulateDelay(currentToken.id, 5),
-                "Delay simulated. Future arrival predictions updated."
+                "Prediction updated. Citizen arrival time adjusted."
               )
             }
           >
@@ -314,7 +327,7 @@ export default function AdminDashboard() {
                 `delay-10-${currentToken.id}`,
                 `Simulate +10 minute delay for ${currentToken.token_number}`,
                 () => api.simulateDelay(currentToken.id, 10),
-                "Delay simulated. Future arrival predictions updated."
+                "Prediction updated. Citizen arrival time adjusted."
               )
             }
           >
@@ -335,6 +348,18 @@ export default function AdminDashboard() {
     { label: "No-shows", value: queue?.missed_count || 0, icon: AlertTriangle },
     { label: "Completed", value: queue?.completed_count || 0, icon: CheckCircle2 },
   ];
+
+  const demoHealthItems = [
+    { label: "Backend connected", ready: backendConnected },
+    { label: "Demo data ready", ready: services.length > 0 && counters.length > 0 && tokens.length > 0 },
+    { label: "Active counters available", ready: counters.some((counter) => counter.status === "active") },
+    { label: "Waiting citizens available", ready: waitingTokens.length > 0 },
+    {
+      label: "Prediction engine active",
+      ready: Boolean(nextWaitingToken?.estimated_service_time && nextWaitingToken?.recommended_arrival_time),
+    },
+  ];
+  const noActiveCounters = counters.length > 0 && !counters.some((counter) => counter.status === "active");
 
   if (loading) {
     return (
@@ -492,8 +517,17 @@ export default function AdminDashboard() {
                 <div className="prediction-focus">
                   <span>Selected token</span>
                   <strong>{nextWaitingToken.token_number}</strong>
-                  <p>Citizen should arrive based on recommended arrival time, not appointment time.</p>
+                  <p>
+                    {noActiveCounters
+                      ? "Resume a counter to restart reliable arrival predictions."
+                      : "Citizen should arrive based on recommended arrival time, not appointment time."}
+                  </p>
                 </div>
+                {lastPredictionEvent ? (
+                  <div className="prediction-update-note" role="status">
+                    {lastPredictionEvent}
+                  </div>
+                ) : null}
                 <dl className="prediction-detail-list">
                   <div>
                     <dt>People ahead</dt>
@@ -516,6 +550,24 @@ export default function AdminDashboard() {
             ) : (
               <div className="empty-state compact">No waiting citizens to predict.</div>
             )}
+          </section>
+
+          <section className="panel demo-health-panel" data-testid="demo-health-checklist">
+            <div className="panel-header">
+              <div>
+                <p className="section-kicker">Demo Simulator</p>
+                <h2>Demo Health Checklist</h2>
+              </div>
+            </div>
+            <ul className="demo-health-list">
+              {demoHealthItems.map((item) => (
+                <li className={item.ready ? "ready" : "attention"} key={item.label}>
+                  <CheckCircle2 size={16} aria-hidden="true" />
+                  <span>{item.label}</span>
+                  <strong>{item.ready ? "Ready" : "Check"}</strong>
+                </li>
+              ))}
+            </ul>
           </section>
 
           <section className="panel demo-steps-panel" data-testid="demo-steps">

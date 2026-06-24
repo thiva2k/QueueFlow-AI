@@ -529,8 +529,69 @@ h3 {
   line-height: 1.5;
 }
 
+.prediction-update-note {
+  margin-top: var(--space-3);
+  border: 1px solid #b5dac5;
+  border-radius: var(--radius-md);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  padding: var(--space-3);
+  font-weight: 900;
+  line-height: 1.4;
+}
+
 .demo-steps-panel {
   border-color: #bdd2da;
+}
+
+.demo-health-panel {
+  border-color: #b5dac5;
+}
+
+.demo-health-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-health-list li {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  padding: 8px 10px;
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+.demo-health-list li.ready {
+  border-color: #b5dac5;
+  background: var(--color-success-bg);
+}
+
+.demo-health-list li.attention {
+  border-color: #e1b985;
+  background: var(--color-warning-bg);
+}
+
+.demo-health-list svg {
+  color: var(--color-success);
+}
+
+.demo-health-list li.attention svg {
+  color: var(--color-warning);
+}
+
+.demo-health-list strong {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
 }
 
 .demo-steps-list {
@@ -1405,6 +1466,11 @@ td {
 .display-counter-ready {
   border-color: var(--color-border);
   background: var(--color-surface);
+}
+
+.display-counter-paused {
+  border-color: #e1b985;
+  background: var(--color-warning-bg);
 }
 
 .display-counter-card.is-new-token {

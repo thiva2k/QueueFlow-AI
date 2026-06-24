@@ -26,6 +26,19 @@ function formatTime(value) {
   }).format(new Date(value));
 }
 
+function minutesUntil(value, now = new Date()) {
+  if (!value) return null;
+  return Math.ceil((new Date(value).getTime() - now.getTime()) / 60000);
+}
+
+function arrivalReceiptMessage(token) {
+  const minutes = minutesUntil(token?.recommended_arrival_time);
+  if (minutes == null) return "Keep this link open. Your recommended arrival time will update as the queue moves.";
+  if (minutes <= 0) return "Please come to the office now. Your recommended arrival time has arrived.";
+  if (minutes <= 15) return "Please start heading to the office soon.";
+  return "Arrive at the recommended time, not the appointment time.";
+}
+
 function createLocalQrDataUrl(value) {
   const size = 29;
   const modules = Array.from({ length: size }, () => Array(size).fill(false));
@@ -254,7 +267,7 @@ export default function CitizenBooking({ onNavigate }) {
               <div>
                 <p className="section-kicker">Token created</p>
                 <strong>{createdToken.token_number}</strong>
-                <p>Arrive at the recommended time, not the appointment time.</p>
+                <p>{arrivalReceiptMessage(createdToken)}</p>
               </div>
               <div className="booking-result-grid">
                 <article>
@@ -267,8 +280,8 @@ export default function CitizenBooking({ onNavigate }) {
                 </article>
               </div>
               <div className="qr-share-panel">
-                <div className="qr-frame" aria-label={`QR code for ${createdToken.token_number}`} data-testid="token-qr">
-                  {qrUrl ? <img src={qrUrl} alt={`QR code linking to ${createdToken.token_number} status`} /> : <QrCode size={72} aria-hidden="true" />}
+                <div className="qr-frame" aria-label={`Status code for ${createdToken.token_number}`} data-testid="token-qr">
+                  {qrUrl ? <img src={qrUrl} alt={`Status code for ${createdToken.token_number}`} /> : <QrCode size={72} aria-hidden="true" />}
                 </div>
                 <div>
                   <label className="field-label compact" htmlFor="status_link">
@@ -321,7 +334,7 @@ export default function CitizenBooking({ onNavigate }) {
           </div>
           <div className="citizen-alert success">
             <CheckCircle2 size={18} aria-hidden="true" />
-            <span>You can wait away from the office until your recommended arrival time.</span>
+            <span>Use your recommended arrival time to decide whether to wait away or come now.</span>
           </div>
         </aside>
       </section>

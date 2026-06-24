@@ -17,6 +17,13 @@ def get_counter_or_404(db: Session, counter_id: int) -> models.Counter:
     return counter
 
 
+def counter_has_open_token(db: Session, counter: models.Counter) -> bool:
+    if not counter.current_token_id:
+        return False
+    token = db.get(models.Token, counter.current_token_id)
+    return bool(token and token.status in {"called", "serving"})
+
+
 @router.get("", response_model=list[schemas.CounterRead])
 def list_counters(db: Session = Depends(get_db)):
     return db.query(models.Counter).order_by(models.Counter.id).all()
@@ -42,6 +49,8 @@ def create_counter(payload: schemas.CounterCreate, db: Session = Depends(get_db)
 @router.patch("/{counter_id}/pause", response_model=schemas.CounterRead)
 def pause_counter(counter_id: int, db: Session = Depends(get_db)):
     counter = get_counter_or_404(db, counter_id)
+    if counter_has_open_token(db, counter):
+        raise HTTPException(status_code=400, detail="Clear the current token before pausing this counter")
     counter.status = "paused"
     db.commit()
     db.refresh(counter)
