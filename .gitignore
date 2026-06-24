@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Backend local runtime
+backend/.venv/
+backend/queueflow.db
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/admin-dashboard-*.png
+frontend/citizen-portal-smoke.png
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local editor / OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local agent/tooling state
+.agents/
+.codex/
+.claude-flow/
+data/
+claude-flow.config.json
