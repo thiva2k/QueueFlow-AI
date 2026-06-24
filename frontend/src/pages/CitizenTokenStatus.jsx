@@ -35,6 +35,20 @@ function minutesUntil(value, now = new Date()) {
   return Math.ceil((new Date(value).getTime() - now.getTime()) / 60000);
 }
 
+function minutesMovedLater(before, after) {
+  if (!before || !after) return 0;
+  return Math.max(0, Math.round((new Date(after).getTime() - new Date(before).getTime()) / 60000));
+}
+
+function predictionDeltaText(previousPrediction, nextPrediction) {
+  const serviceDelta = minutesMovedLater(previousPrediction?.estimated, nextPrediction?.estimated);
+  const arrivalDelta = minutesMovedLater(previousPrediction?.arrival, nextPrediction?.arrival);
+  const parts = [];
+  if (serviceDelta) parts.push(`Estimated service moved +${serviceDelta} min`);
+  if (arrivalDelta) parts.push(`Arrival moved +${arrivalDelta} min`);
+  return parts.join(". ");
+}
+
 function serviceName(servicesById, serviceId) {
   return servicesById.get(serviceId)?.name || "Unknown service";
 }
@@ -166,7 +180,7 @@ export default function CitizenTokenStatus({ tokenNumber }) {
           tokenData.status === "waiting" &&
           (previousPrediction.estimated !== nextPrediction.estimated || previousPrediction.arrival !== nextPrediction.arrival)
         ) {
-          setPredictionNotice("Prediction updated. Citizen arrival time adjusted.");
+          setPredictionNotice(predictionDeltaText(previousPrediction, nextPrediction) || "Prediction updated. Citizen arrival time adjusted.");
         }
         previousPredictionRef.current = nextPrediction;
         setToken(tokenData);

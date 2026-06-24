@@ -11,6 +11,7 @@ import {
   RefreshCcw,
   ShieldCheck,
 } from "lucide-react";
+import QRCode from "qrcode";
 import { API_BASE_URL, api } from "../api.js";
 
 function formatMinutes(value) {
@@ -39,51 +40,6 @@ function arrivalReceiptMessage(token) {
   return "Arrive at the recommended time, not the appointment time.";
 }
 
-function createLocalQrDataUrl(value) {
-  const size = 29;
-  const modules = Array.from({ length: size }, () => Array(size).fill(false));
-  const placeFinder = (startX, startY) => {
-    for (let y = 0; y < 7; y += 1) {
-      for (let x = 0; x < 7; x += 1) {
-        const edge = x === 0 || y === 0 || x === 6 || y === 6;
-        const core = x >= 2 && x <= 4 && y >= 2 && y <= 4;
-        modules[startY + y][startX + x] = edge || core;
-      }
-    }
-  };
-  placeFinder(1, 1);
-  placeFinder(size - 8, 1);
-  placeFinder(1, size - 8);
-
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const inFinder =
-        (x <= 8 && y <= 8) ||
-        (x >= size - 9 && y <= 8) ||
-        (x <= 8 && y >= size - 9);
-      if (inFinder) continue;
-      const bit = ((Math.imul(x + 3, 73856093) ^ Math.imul(y + 5, 19349663) ^ hash) >>> 0) % 7;
-      modules[y][x] = bit === 0 || bit === 3;
-    }
-  }
-
-  const cells = modules
-    .flatMap((row, y) =>
-      row.map((enabled, x) =>
-        enabled ? `<rect x="${x}" y="${y}" width="1" height="1" rx="0.08" />` : ""
-      )
-    )
-    .join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" role="img"><title>Token status code</title><rect width="${size}" height="${size}" fill="white"/> <g fill="#071f31">${cells}</g></svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-}
-
 export default function CitizenBooking({ onNavigate }) {
   const [services, setServices] = useState([]);
   const [queue, setQueue] = useState(null);
@@ -93,6 +49,7 @@ export default function CitizenBooking({ onNavigate }) {
   const [error, setError] = useState("");
   const [createdToken, setCreatedToken] = useState(null);
   const [copyMessage, setCopyMessage] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
 
   const selectedService = useMemo(
     () => services.find((service) => String(service.id) === String(form.service_id)),
@@ -159,7 +116,36 @@ export default function CitizenBooking({ onNavigate }) {
 
   const statusPath = createdToken ? `/token/${createdToken.token_number}` : "";
   const statusUrl = createdToken ? `${window.location.origin}${statusPath}` : "";
-  const qrUrl = createdToken ? createLocalQrDataUrl(statusUrl) : "";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function generateQrCode() {
+      if (!statusUrl) {
+        setQrDataUrl("");
+        return;
+      }
+      try {
+        const dataUrl = await QRCode.toDataURL(statusUrl, {
+          errorCorrectionLevel: "M",
+          margin: 2,
+          scale: 6,
+          color: {
+            dark: "#071f31",
+            light: "#ffffff",
+          },
+        });
+        if (!cancelled) setQrDataUrl(dataUrl);
+      } catch {
+        if (!cancelled) setQrDataUrl("");
+      }
+    }
+
+    generateQrCode();
+    return () => {
+      cancelled = true;
+    };
+  }, [statusUrl]);
 
   async function copyStatusLink() {
     if (!statusUrl) return;
@@ -280,8 +266,8 @@ export default function CitizenBooking({ onNavigate }) {
                 </article>
               </div>
               <div className="qr-share-panel">
-                <div className="qr-frame" aria-label={`Status code for ${createdToken.token_number}`} data-testid="token-qr">
-                  {qrUrl ? <img src={qrUrl} alt={`Status code for ${createdToken.token_number}`} /> : <QrCode size={72} aria-hidden="true" />}
+                <div className="qr-frame" aria-label={`QR code for ${createdToken.token_number}`} data-testid="token-qr">
+                  {qrDataUrl ? <img src={qrDataUrl} alt={`QR code linking to ${createdToken.token_number} status`} /> : <QrCode size={72} aria-hidden="true" />}
                 </div>
                 <div>
                   <label className="field-label compact" htmlFor="status_link">

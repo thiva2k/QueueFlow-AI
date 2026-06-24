@@ -1546,6 +1546,33 @@ td {
   text-align: center;
 }
 
+.display-kiosk-label {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-weight: 900;
+}
+
+.kiosk-display {
+  width: min(1600px, 100%);
+  padding: var(--space-5);
+}
+
+.kiosk-display .display-header {
+  padding-bottom: var(--space-3);
+}
+
+.kiosk-display .display-counter-card {
+  min-height: 300px;
+}
+
+.kiosk-display .display-counter-card strong {
+  font-size: clamp(3.6rem, 8vw, 6.5rem);
+}
+
+.kiosk-display .display-footer {
+  display: none;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
