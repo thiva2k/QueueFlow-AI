@@ -6,6 +6,7 @@ import { chromium } from "@playwright/test";
 const backendUrl = process.env.BACKEND_URL || "http://127.0.0.1:8010";
 const frontendUrl = process.env.FRONTEND_URL || "http://127.0.0.1:5173";
 const backendPort = new URL(backendUrl).port || "80";
+const frontendPort = new URL(frontendUrl).port || "5173";
 const chromePath = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
 function startProcess(command, args, cwd, env = process.env) {
@@ -59,7 +60,7 @@ async function main() {
   const frontendEnv = { ...process.env, VITE_API_BASE_URL: backendUrl };
   const frontend = startProcess(
     "cmd.exe",
-    ["/c", "npm.cmd", "run", "dev", "--", "--host", "127.0.0.1"],
+    ["/c", "npm.cmd", "run", "dev", "--", "--host", "127.0.0.1", "--port", frontendPort, "--strictPort"],
     "A:\\EXITO\\frontend",
     frontendEnv
   );
@@ -84,7 +85,7 @@ async function main() {
 
     await page.goto(`${frontendUrl}/admin`, { waitUntil: "networkidle" });
     try {
-    await page.getByRole("heading", { name: "Service Office Queue Control" }).waitFor({ timeout: 30000 });
+    await page.getByRole("heading", { name: "QueueFlow AI Control Center" }).waitFor({ timeout: 30000 });
     } catch (error) {
       const bodyText = await page.locator("body").innerText().catch(() => "");
       await page.screenshot({ path: "A:\\EXITO\\frontend\\admin-dashboard-failure.png", fullPage: true }).catch(() => {});
@@ -94,19 +95,22 @@ async function main() {
         } Page errors: ${pageErrors.join(" | ") || "(none)"}`
       );
     }
+    await page.getByTestId("demo-steps").waitFor();
+    await page.getByRole("button", { name: "Reset Demo Data" }).first().click();
+    await page.getByText("Reset demo data completed.").waitFor({ timeout: 10000 });
     await page.getByRole("heading", { name: "Waiting Citizens" }).waitFor();
     await page.getByRole("heading", { name: "Next Waiting Citizen" }).waitFor();
     const counter3 = page.locator(".counter-card", { hasText: "Counter 3" });
-    await counter3.getByText("No citizen at this counter").waitFor();
+    await counter3.getByText("Ready for next citizen").waitFor();
     await counter3.getByRole("button", { name: "Call Next" }).click();
-    await counter3.getByText("Called to Counter").waitFor();
+    await counter3.getByText("Called to Counter", { exact: true }).waitFor();
     await counter3.getByRole("button", { name: "Mark No-show" }).waitFor();
     await counter3.getByRole("button", { name: "Start Serving" }).click();
     await counter3.getByText("Being Served").waitFor();
     await counter3.getByRole("button", { name: "Simulate +10 Delay" }).click();
     await page.getByText("Delay simulated. Future arrival predictions updated.").waitFor({ timeout: 10000 });
     await counter3.getByRole("button", { name: "Complete" }).click();
-    await counter3.getByText("No citizen at this counter").waitFor({ timeout: 10000 });
+    await counter3.getByText("Ready for next citizen").waitFor({ timeout: 10000 });
     await page.getByRole("button", { name: "Add Random Token" }).click();
 
     const waitingSection = page.locator("section.panel", {

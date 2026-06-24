@@ -353,7 +353,8 @@ export default function AdminDashboard() {
       <header className="topbar">
         <div>
           <p className="eyebrow">QueueFlow AI Admin</p>
-          <h1>Service Office Queue Control</h1>
+          <h1>QueueFlow AI Control Center</h1>
+          <p className="page-subtitle">Predictive arrival-time engine for smarter queues.</p>
         </div>
         <div className="topbar-meta">
           <span className="clock-pill">
@@ -363,6 +364,15 @@ export default function AdminDashboard() {
           <span className="api-pill">API {API_BASE_URL}</span>
           <ActionButton icon={RefreshCcw} variant="secondary" busy={refreshing} onClick={() => fetchDashboard()}>
             Refresh
+          </ActionButton>
+          <ActionButton
+            icon={RotateCw}
+            variant="secondary"
+            busy={actionKey === "reset"}
+            locked={actionLocked}
+            onClick={() => runAction("reset", "Reset demo data", () => api.resetDemo())}
+          >
+            Reset Demo Data
           </ActionButton>
         </div>
       </header>
@@ -420,8 +430,8 @@ export default function AdminDashboard() {
 
                   {counter.status !== "paused" && !currentToken ? (
                     <div className="counter-state-block">
-                      <strong>No citizen at this counter</strong>
-                      <p>Ready to call the next waiting citizen.</p>
+                      <strong>Ready for next citizen</strong>
+                      <p>Call the next waiting citizen when this counter is free.</p>
                     </div>
                   ) : null}
 
@@ -431,7 +441,7 @@ export default function AdminDashboard() {
                       <strong>{currentToken.token_number}</strong>
                       <p>{currentToken.citizen_name || "Unnamed citizen"}</p>
                       <p>{serviceLabel}</p>
-                      <p>Citizen has been called. Waiting for arrival at counter.</p>
+                      <p>Citizen called to counter. Waiting for arrival.</p>
                     </div>
                   ) : null}
 
@@ -469,43 +479,61 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        <section className="panel prediction-panel">
-          <div className="panel-header">
-            <div>
-              <p className="section-kicker">Prediction Engine</p>
-              <h2>Next Waiting Citizen</h2>
-            </div>
-          </div>
-          {nextWaitingToken ? (
-            <>
-              <div className="prediction-focus">
-                <span>Selected token</span>
-                <strong>{nextWaitingToken.token_number}</strong>
-                <p>Citizen should arrive based on recommended arrival time, not appointment time.</p>
+        <aside className="dashboard-side-stack">
+          <section className="panel prediction-panel">
+            <div className="panel-header">
+              <div>
+                <p className="section-kicker">Prediction Engine</p>
+                <h2>Next Waiting Citizen</h2>
               </div>
-              <dl className="prediction-detail-list">
-                <div>
-                  <dt>People ahead</dt>
-                  <dd>{nextWaitingToken.people_ahead ?? "-"}</dd>
+            </div>
+            {nextWaitingToken ? (
+              <>
+                <div className="prediction-focus">
+                  <span>Selected token</span>
+                  <strong>{nextWaitingToken.token_number}</strong>
+                  <p>Citizen should arrive based on recommended arrival time, not appointment time.</p>
                 </div>
-                <div>
-                  <dt>Estimated service time</dt>
-                  <dd>{formatTime(nextWaitingToken.estimated_service_time)}</dd>
-                </div>
-                <div>
-                  <dt>Recommended arrival time</dt>
-                  <dd>{formatTime(nextWaitingToken.recommended_arrival_time)}</dd>
-                </div>
-                <div>
-                  <dt>Last updated</dt>
-                  <dd>{lastUpdated ? formatDateTime(lastUpdated.toISOString()) : "Pending"}</dd>
-                </div>
-              </dl>
-            </>
-          ) : (
-            <div className="empty-state compact">No waiting citizens to predict.</div>
-          )}
-        </section>
+                <dl className="prediction-detail-list">
+                  <div>
+                    <dt>People ahead</dt>
+                    <dd>{nextWaitingToken.people_ahead ?? "-"}</dd>
+                  </div>
+                  <div>
+                    <dt>Estimated service time</dt>
+                    <dd>{formatTime(nextWaitingToken.estimated_service_time)}</dd>
+                  </div>
+                  <div>
+                    <dt>Recommended arrival time</dt>
+                    <dd>{formatTime(nextWaitingToken.recommended_arrival_time)}</dd>
+                  </div>
+                  <div>
+                    <dt>Last updated</dt>
+                    <dd>{lastUpdated ? formatDateTime(lastUpdated.toISOString()) : "Pending"}</dd>
+                  </div>
+                </dl>
+              </>
+            ) : (
+              <div className="empty-state compact">No waiting citizens to predict.</div>
+            )}
+          </section>
+
+          <section className="panel demo-steps-panel" data-testid="demo-steps">
+            <div className="panel-header">
+              <div>
+                <p className="section-kicker">Demo Simulator</p>
+                <h2>Demo Steps</h2>
+              </div>
+            </div>
+            <ol className="demo-steps-list">
+              <li>Reset Demo Data</li>
+              <li>Book citizen token</li>
+              <li>Open citizen status page</li>
+              <li>Simulate +10 delay</li>
+              <li>Observe recommended arrival update</li>
+            </ol>
+          </section>
+        </aside>
       </section>
 
       <section className="panel">

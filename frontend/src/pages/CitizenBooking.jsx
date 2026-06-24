@@ -1,10 +1,74 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ArrowRight, Building2, CheckCircle2, Clock3, RefreshCcw, ShieldCheck } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Building2,
+  CheckCircle2,
+  Clock3,
+  Copy,
+  ExternalLink,
+  QrCode,
+  RefreshCcw,
+  ShieldCheck,
+} from "lucide-react";
 import { API_BASE_URL, api } from "../api.js";
 
 function formatMinutes(value) {
   const minutes = Math.round(value || 0);
   return `${minutes} min`;
+}
+
+function formatTime(value) {
+  if (!value) return "Pending";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function createLocalQrDataUrl(value) {
+  const size = 29;
+  const modules = Array.from({ length: size }, () => Array(size).fill(false));
+  const placeFinder = (startX, startY) => {
+    for (let y = 0; y < 7; y += 1) {
+      for (let x = 0; x < 7; x += 1) {
+        const edge = x === 0 || y === 0 || x === 6 || y === 6;
+        const core = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+        modules[startY + y][startX + x] = edge || core;
+      }
+    }
+  };
+  placeFinder(1, 1);
+  placeFinder(size - 8, 1);
+  placeFinder(1, size - 8);
+
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const inFinder =
+        (x <= 8 && y <= 8) ||
+        (x >= size - 9 && y <= 8) ||
+        (x <= 8 && y >= size - 9);
+      if (inFinder) continue;
+      const bit = ((Math.imul(x + 3, 73856093) ^ Math.imul(y + 5, 19349663) ^ hash) >>> 0) % 7;
+      modules[y][x] = bit === 0 || bit === 3;
+    }
+  }
+
+  const cells = modules
+    .flatMap((row, y) =>
+      row.map((enabled, x) =>
+        enabled ? `<rect x="${x}" y="${y}" width="1" height="1" rx="0.08" />` : ""
+      )
+    )
+    .join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" role="img"><title>Token status code</title><rect width="${size}" height="${size}" fill="white"/> <g fill="#071f31">${cells}</g></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 export default function CitizenBooking({ onNavigate }) {
@@ -14,6 +78,8 @@ export default function CitizenBooking({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [createdToken, setCreatedToken] = useState(null);
+  const [copyMessage, setCopyMessage] = useState("");
 
   const selectedService = useMemo(
     () => services.find((service) => String(service.id) === String(form.service_id)),
@@ -69,11 +135,26 @@ export default function CitizenBooking({ onNavigate }) {
         nic_or_phone: form.nic_or_phone.trim(),
         service_id: Number(form.service_id),
       });
-      onNavigate(`/token/${token.token_number}`);
+      setCreatedToken(token);
+      setCopyMessage("");
     } catch (submitError) {
       setError(submitError.message || "Could not create your token.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  const statusPath = createdToken ? `/token/${createdToken.token_number}` : "";
+  const statusUrl = createdToken ? `${window.location.origin}${statusPath}` : "";
+  const qrUrl = createdToken ? createLocalQrDataUrl(statusUrl) : "";
+
+  async function copyStatusLink() {
+    if (!statusUrl) return;
+    try {
+      await navigator.clipboard.writeText(statusUrl);
+      setCopyMessage("Link copied.");
+    } catch {
+      setCopyMessage("Copy blocked. Select the link below.");
     }
   }
 
@@ -84,7 +165,7 @@ export default function CitizenBooking({ onNavigate }) {
           <p className="eyebrow">QueueFlow AI Citizen Portal</p>
           <h1>Book your queue token before you arrive</h1>
           <p className="hero-copy">
-            Get your token number, live queue position, estimated service time, and recommended arrival time.
+            Get your token number, predicted service time, and the recommended arrival time that helps you avoid waiting.
           </p>
         </div>
         <div className="citizen-hero-card">
@@ -168,6 +249,54 @@ export default function CitizenBooking({ onNavigate }) {
         </form>
 
         <aside className="citizen-side">
+          {createdToken ? (
+            <section className="booking-result-card" aria-live="polite" data-testid="booking-result">
+              <div>
+                <p className="section-kicker">Token created</p>
+                <strong>{createdToken.token_number}</strong>
+                <p>Arrive at the recommended time, not the appointment time.</p>
+              </div>
+              <div className="booking-result-grid">
+                <article>
+                  <span>Estimated service</span>
+                  <strong>{formatTime(createdToken.estimated_service_time)}</strong>
+                </article>
+                <article>
+                  <span>Recommended arrival</span>
+                  <strong>{formatTime(createdToken.recommended_arrival_time)}</strong>
+                </article>
+              </div>
+              <div className="qr-share-panel">
+                <div className="qr-frame" aria-label={`QR code for ${createdToken.token_number}`} data-testid="token-qr">
+                  {qrUrl ? <img src={qrUrl} alt={`QR code linking to ${createdToken.token_number} status`} /> : <QrCode size={72} aria-hidden="true" />}
+                </div>
+                <div>
+                  <label className="field-label compact" htmlFor="status_link">
+                    Token status link
+                  </label>
+                  <input
+                    id="status_link"
+                    value={statusUrl}
+                    readOnly
+                    onFocus={(event) => event.target.select()}
+                    data-testid="token-share-link"
+                  />
+                  <div className="share-actions">
+                    <button className="action-button secondary" type="button" onClick={copyStatusLink}>
+                      <Copy size={16} aria-hidden="true" />
+                      <span>Copy Link</span>
+                    </button>
+                    <button className="action-button" type="button" onClick={() => onNavigate(statusPath)}>
+                      <ExternalLink size={16} aria-hidden="true" />
+                      <span>Open Status</span>
+                    </button>
+                  </div>
+                  {copyMessage ? <p className="copy-message">{copyMessage}</p> : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           <article className="citizen-stat-card">
             <span>Waiting now</span>
             <strong>{queue?.waiting?.length ?? "-"}</strong>
