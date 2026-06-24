@@ -70,7 +70,8 @@ async function main() {
 
   try {
     await waitFor(`${backendUrl}/health`, "backend");
-    await fetch(`${backendUrl}/admin/demo/reset`, { method: "POST" });
+    const resetResponse = await fetch(`${backendUrl}/admin/demo/reset`, { method: "POST" });
+    if (!resetResponse.ok) throw new Error("Could not reset demo data");
     await waitFor(frontendUrl, "frontend");
 
     const browser = await chromium.launch(
@@ -85,43 +86,60 @@ async function main() {
     });
     page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    const attachDiagnostics = (targetPage) => {
+      targetPage.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+      });
+      targetPage.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      targetPage.on("pageerror", (error) => pageErrors.push(error.message));
+    };
 
     await page.goto(`${frontendUrl}/book`, { waitUntil: "networkidle" });
     await page.getByRole("heading", { name: "Book your queue token before you arrive" }).waitFor();
     await page.getByLabel("Full name").fill("Citizen Smoke Test");
     await page.getByLabel("NIC or phone number").fill("0775551234");
+    await page.waitForFunction(() => document.querySelector("#service_id")?.options.length > 0);
     await page.getByLabel("Service type").selectOption({ index: 0 });
     await page.getByRole("button", { name: "Book Token" }).click();
 
+    await page.getByTestId("booking-result").waitFor({ timeout: 15000 });
+    await page.getByTestId("token-share-link").waitFor();
+    await page.getByTestId("token-qr").waitFor();
+    const receiptUrl = await page.getByTestId("token-share-link").inputValue();
+    if (!receiptUrl.includes("/token/")) throw new Error(`Expected receipt token URL, got ${receiptUrl}`);
+    await page.getByRole("button", { name: "Open Status" }).click();
     await page.waitForURL(/\/token\//, { timeout: 15000 });
-    await page.locator(".primary-prediction").getByText("Estimated Service Time").waitFor({ timeout: 15000 });
-    await page.locator(".arrival-prediction").getByText("Recommended Arrival").waitFor();
-    await page.locator(".prediction-card").getByText("People Ahead").waitFor();
+    await page.getByTestId("token-estimated-service").waitFor({ timeout: 15000 });
+    await page.getByTestId("token-recommended-arrival").waitFor();
+    await page.getByTestId("token-people-ahead").waitFor();
     const tokenUrl = page.url();
     if (!tokenUrl.includes("/token/")) throw new Error(`Expected token status URL, got ${tokenUrl}`);
 
-    const estimatedLocator = page.locator(".primary-prediction strong");
-    const arrivalLocator = page.locator(".arrival-prediction strong");
+    const estimatedLocator = page.getByTestId("token-estimated-service").locator("strong");
+    const arrivalLocator = page.getByTestId("token-recommended-arrival").locator("strong");
     const beforeEstimate = await estimatedLocator.innerText();
     const beforeArrival = await arrivalLocator.innerText();
 
     const display = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    attachDiagnostics(display);
     await display.goto(`${frontendUrl}/display`, { waitUntil: "networkidle" });
     await display.getByRole("heading", { name: "Service Office Queue" }).waitFor({ timeout: 30000 });
     await display.getByText("Please proceed only when your token is called.").waitFor();
+    await display.getByTestId("display-fullscreen").waitFor();
     await display.getByRole("heading", { name: "Now Serving" }).waitFor();
     await display.getByRole("heading", { name: "Next Tokens" }).waitFor();
     await display.getByText("Counter 3").waitFor();
-    const displayAverageWait = display.locator(".display-average-wait strong");
+    const displayAverageWait = display.getByTestId("display-average-wait").locator("strong");
     const beforeDisplayAverageWait = await displayAverageWait.innerText();
 
     const admin = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    attachDiagnostics(admin);
     await admin.goto(`${frontendUrl}/admin`, { waitUntil: "networkidle" });
-    await admin.getByRole("heading", { name: "Service Office Queue Control" }).waitFor({ timeout: 30000 });
+    await admin.getByRole("heading", { name: "QueueFlow AI Control Center" }).waitFor({ timeout: 30000 });
     const counter3 = admin.locator(".counter-card", { hasText: "Counter 3" });
-    await counter3.getByText("No citizen at this counter").waitFor();
+    await counter3.getByText("Ready for next citizen").waitFor();
     await counter3.getByRole("button", { name: "Call Next" }).click();
-    await counter3.getByText("Called to Counter").waitFor();
+    await counter3.getByText("Called to Counter", { exact: true }).waitFor();
     await counter3.getByRole("button", { name: "Start Serving" }).click();
     await counter3.getByText("Being Served").waitFor();
     await counter3.getByRole("button", { name: "Simulate +10 Delay" }).click();

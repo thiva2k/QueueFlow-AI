@@ -22,19 +22,25 @@ function AppNav({ route, onNavigate }) {
 
   return (
     <nav className="app-nav" aria-label="Main navigation">
-      <a href="/book" className={route.name === "book" ? "active" : ""} onClick={(event) => handleClick(event, "/book")}>
-        Book Token
+      <a className="brand-lockup" href="/book" onClick={(event) => handleClick(event, "/book")}>
+        <span className="brand-mark">QF</span>
+        <span>QueueFlow AI</span>
       </a>
-      <a href="/admin" className={route.name === "admin" ? "active" : ""} onClick={(event) => handleClick(event, "/admin")}>
-        Admin Dashboard
-      </a>
-      <a
-        href="/display"
-        className={route.name === "display" ? "active" : ""}
-        onClick={(event) => handleClick(event, "/display")}
-      >
-        Public Display
-      </a>
+      <div className="nav-links">
+        <a href="/book" className={route.name === "book" ? "active" : ""} onClick={(event) => handleClick(event, "/book")}>
+          Book Token
+        </a>
+        <a href="/admin" className={route.name === "admin" ? "active" : ""} onClick={(event) => handleClick(event, "/admin")}>
+          Admin Dashboard
+        </a>
+        <a
+          href="/display"
+          className={route.name === "display" ? "active" : ""}
+          onClick={(event) => handleClick(event, "/display")}
+        >
+          Public Display
+        </a>
+      </div>
     </nav>
   );
 }

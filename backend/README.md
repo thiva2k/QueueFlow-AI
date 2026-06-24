@@ -1,6 +1,6 @@
 # QueueFlow AI Backend
 
-Backend plus React frontend for QueueFlow AI, an AI-powered smart queue management MVP for service offices. The current build includes queue tokens, counter state, prediction-based arrival guidance, an officer-facing admin dashboard, and a citizen portal for booking and tracking tokens.
+Backend plus React frontend for QueueFlow AI, an AI-powered smart queue management MVP for service offices. The current build includes queue tokens, counter state, prediction-based arrival guidance, an officer-facing admin control center, citizen booking/status pages, and a public display.
 
 ## Setup
 
@@ -146,18 +146,21 @@ Optional browser smoke check:
 ```powershell
 cd A:\EXITO\frontend
 npm.cmd run smoke
-npm.cmd run smoke:citizen
 npm.cmd run smoke:e2e
 ```
 
+Prerequisites: backend venv installed, frontend dependencies installed, and Chrome/Playwright available.
+
 The admin smoke check starts its own backend on `http://127.0.0.1:8010`, starts Vite on `http://127.0.0.1:5173`, clicks through the main admin demo actions in Chrome, captures `admin-dashboard-smoke.png`, and exits.
 
-The citizen/full e2e smoke check starts its own backend on `http://127.0.0.1:8011`, starts Vite on `http://127.0.0.1:5173`, books a citizen token, opens the admin dashboard, simulates a +10 minute delay, verifies the citizen estimated service time and recommended arrival time change, checks the public display, captures `citizen-portal-smoke.png`, and exits.
+The e2e smoke check starts its own backend on `http://127.0.0.1:8011`, starts Vite on `http://127.0.0.1:5173`, books a citizen token, verifies the booking receipt/QR/link, opens the token status page, simulates a +10 minute delay from admin, verifies citizen predictions change, checks the public display, captures `citizen-portal-smoke.png`, and exits.
 
 Citizen demo flow:
 - Open `http://127.0.0.1:5173/book`.
 - Enter full name, NIC or phone number, and service type.
 - Click `Book Token`.
+- Confirm the booking receipt shows token number, estimated service time, recommended arrival time, QR code, and Copy Link.
+- Click `Open Status`.
 - On `/token/{tokenNumber}`, confirm estimated service time and recommended arrival time.
 - Open `http://127.0.0.1:5173/admin` in another tab.
 - In a counter card, click `Call Next`, `Start Serving`, then `Simulate +5 Delay` or `Simulate +10 Delay`.
@@ -192,6 +195,7 @@ Public display demo:
 - `GET /tokens/{token_id}`
 - `GET /tokens/by-number/{token_number}`
 - `GET /queue/status`
+- `POST /admin/demo/seed`
 - `POST /admin/call-next/{counter_id}`
 - `POST /admin/start-token/{counter_id}/{token_id}`
 - `POST /admin/complete-token/{counter_id}/{token_id}`

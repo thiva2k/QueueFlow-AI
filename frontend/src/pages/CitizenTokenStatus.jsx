@@ -240,17 +240,17 @@ export default function CitizenTokenStatus({ tokenNumber }) {
           </dl>
         </article>
 
-        <article className="prediction-card primary-prediction">
+        <article className="prediction-card primary-prediction" data-testid="token-estimated-service">
           <Clock3 size={22} aria-hidden="true" />
           <span>Estimated Service Time</span>
           <strong>{formatTime(token?.estimated_service_time)}</strong>
         </article>
-        <article className="prediction-card arrival-prediction">
+        <article className="prediction-card arrival-prediction" data-testid="token-recommended-arrival">
           <MapPin size={22} aria-hidden="true" />
           <span>Recommended Arrival</span>
           <strong>{formatTime(token?.recommended_arrival_time)}</strong>
         </article>
-        <article className="prediction-card">
+        <article className="prediction-card" data-testid="token-people-ahead">
           <Users size={22} aria-hidden="true" />
           <span>People Ahead</span>
           <strong>{token?.people_ahead ?? "-"}</strong>

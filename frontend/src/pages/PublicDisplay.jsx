@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, MonitorUp, RefreshCcw, Ticket, Users } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Clock3, Maximize2, MonitorUp, RefreshCcw, Ticket, Volume2 } from "lucide-react";
 import { API_BASE_URL, api } from "../api.js";
 
 const POLL_INTERVAL_MS = 4000;
@@ -40,9 +40,13 @@ export default function PublicDisplay() {
   const [queue, setQueue] = useState(null);
   const [services, setServices] = useState([]);
   const [counters, setCounters] = useState([]);
+  const [now, setNow] = useState(new Date());
   const [lastUpdated, setLastUpdated] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [fullscreenMessage, setFullscreenMessage] = useState("");
+  const [highlightedIds, setHighlightedIds] = useState(new Set());
+  const previousActiveIds = useRef(null);
 
   const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const activeTokens = useMemo(() => [...(queue?.called || []), ...(queue?.now_serving || [])], [queue]);
@@ -73,9 +77,63 @@ export default function PublicDisplay() {
   }, [loadDisplay]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const poller = window.setInterval(loadDisplay, POLL_INTERVAL_MS);
     return () => window.clearInterval(poller);
   }, [loadDisplay]);
+
+  useEffect(() => {
+    const activeIds = new Set(activeTokens.map((token) => token.id));
+    if (previousActiveIds.current) {
+      const newIds = [...activeIds].filter((id) => !previousActiveIds.current.has(id));
+      if (newIds.length) {
+        setHighlightedIds(new Set(newIds));
+        playSafeBeep();
+        const clearTimer = window.setTimeout(() => setHighlightedIds(new Set()), 3200);
+        previousActiveIds.current = activeIds;
+        return () => window.clearTimeout(clearTimer);
+      }
+    }
+    previousActiveIds.current = activeIds;
+  }, [activeTokens]);
+
+  async function enterFullscreen() {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        setFullscreenMessage("Fullscreen closed.");
+      } else if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+        setFullscreenMessage("Fullscreen mode active.");
+      } else {
+        setFullscreenMessage("Fullscreen is not supported in this browser.");
+      }
+    } catch {
+      setFullscreenMessage("Fullscreen was blocked by the browser.");
+    }
+  }
+
+  function playSafeBeep() {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const context = new AudioContext();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.frequency.value = 660;
+      gain.gain.value = 0.04;
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.12);
+    } catch {
+      // Browsers may block audio until the display has a user gesture.
+    }
+  }
 
   if (loading) {
     return (
@@ -96,9 +154,15 @@ export default function PublicDisplay() {
           <p className="eyebrow">QueueFlow AI Public Display</p>
           <h1>Service Office Queue</h1>
         </div>
-        <div className="display-clock">
-          <Clock3 size={22} aria-hidden="true" />
-          <span>{lastUpdated ? formatTime(lastUpdated.toISOString()) : "Pending"}</span>
+        <div className="display-header-actions">
+          <button className="action-button secondary" type="button" onClick={enterFullscreen} data-testid="display-fullscreen">
+            <Maximize2 size={16} aria-hidden="true" />
+            <span>Fullscreen</span>
+          </button>
+          <div className="display-clock">
+            <Clock3 size={22} aria-hidden="true" />
+            <span>{formatTime(now.toISOString())}</span>
+          </div>
         </div>
       </header>
 
@@ -111,7 +175,9 @@ export default function PublicDisplay() {
       <section className="display-message">
         <MonitorUp size={28} aria-hidden="true" />
         <strong>Please proceed only when your token is called.</strong>
+        <span className="display-office-status">Office status: Open and serving</span>
       </section>
+      {fullscreenMessage ? <div className="display-mode-note" role="status">{fullscreenMessage}</div> : null}
 
       <section className="display-summary-grid" aria-label="Queue summary">
         <article>
@@ -126,7 +192,7 @@ export default function PublicDisplay() {
           <span>Waiting citizens</span>
           <strong>{queue?.waiting?.length ?? 0}</strong>
         </article>
-        <article className="display-average-wait">
+        <article className="display-average-wait" data-testid="display-average-wait">
           <span>Average wait</span>
           <strong>{formatMinutes(queue?.average_wait_minutes)}</strong>
         </article>
@@ -145,9 +211,15 @@ export default function PublicDisplay() {
             {counters.map((counter) => {
               const token = counter.current_token_id ? tokensById.get(counter.current_token_id) : null;
               const isPublicToken = token && ["called", "serving"].includes(token.status);
+              const displayState = isPublicToken ? token.status : "ready";
 
               return (
-                <article className="display-counter-card" key={counter.id}>
+                <article
+                  className={`display-counter-card display-counter-${displayState} ${
+                    isPublicToken && highlightedIds.has(token.id) ? "is-new-token" : ""
+                  }`}
+                  key={counter.id}
+                >
                   <span>{counter.name}</span>
                   {isPublicToken ? (
                     <>
@@ -205,8 +277,10 @@ export default function PublicDisplay() {
 
       <footer className="display-footer">
         <Ticket size={20} aria-hidden="true" />
-        <span>Keep your token visible. Staff will call tokens in order based on counter availability.</span>
-        <Users size={20} aria-hidden="true" />
+        <span>
+          Keep your token visible. Last updated {lastUpdated ? formatTime(lastUpdated.toISOString()) : "Pending"}.
+        </span>
+        <Volume2 size={20} aria-hidden="true" />
       </footer>
     </main>
   );
