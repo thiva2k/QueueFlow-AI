@@ -1,14 +1,53 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const STAFF_API_KEY = import.meta.env.VITE_STAFF_API_KEY;
+const REQUEST_TIMEOUT_MS = 8000;
+
+function buildTimeoutSignal() {
+  // Prefer the standard AbortSignal.timeout when available; fall back to a
+  // manually controlled AbortController for older runtimes.
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    return { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), cancel: () => {} };
+  }
+  if (typeof AbortController !== "undefined") {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    return { signal: controller.signal, cancel: () => clearTimeout(timer) };
+  }
+  return { signal: undefined, cancel: () => {} };
+}
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  const { signal, cancel } = buildTimeoutSignal();
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      signal,
+      ...options,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(STAFF_API_KEY ? { "X-API-Key": STAFF_API_KEY } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (networkError) {
+    cancel();
+    if (networkError?.name === "AbortError" || networkError?.name === "TimeoutError") {
+      const timeoutError = new Error(
+        `Request to ${path} timed out after ${REQUEST_TIMEOUT_MS / 1000}s. The backend may be unreachable.`
+      );
+      timeoutError.code = "TIMEOUT";
+      throw timeoutError;
+    }
+    const connError = new Error(
+      networkError?.message || `Could not reach the backend at ${API_BASE_URL}.`
+    );
+    connError.code = "NETWORK";
+    throw connError;
+  } finally {
+    cancel();
+  }
 
   const text = await response.text();
   let data = null;

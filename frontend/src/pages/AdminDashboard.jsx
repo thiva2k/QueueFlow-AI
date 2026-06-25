@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { API_BASE_URL, api } from "../api.js";
+import useVisiblePolling from "../useVisiblePolling.js";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -188,12 +189,9 @@ export default function AdminDashboard() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const poller = window.setInterval(() => {
-      if (!actionKey) fetchDashboard({ silent: true });
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(poller);
-  }, [actionKey, fetchDashboard]);
+  useVisiblePolling(() => {
+    if (!actionKey) fetchDashboard({ silent: true });
+  }, POLL_INTERVAL_MS);
 
   async function runAction(key, pendingText, action, successText, options = {}) {
     setActionKey(key);

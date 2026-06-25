@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Clock3, Maximize2, MonitorUp, RefreshCcw, Ticket, Volume2 } from "lucide-react";
 import { API_BASE_URL, api } from "../api.js";
+import useVisiblePolling from "../useVisiblePolling.js";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -83,10 +84,7 @@ export default function PublicDisplay() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const poller = window.setInterval(loadDisplay, POLL_INTERVAL_MS);
-    return () => window.clearInterval(poller);
-  }, [loadDisplay]);
+  useVisiblePolling(loadDisplay, POLL_INTERVAL_MS);
 
   useEffect(() => {
     const activeKeys = new Set(activeTokens.map((token) => `${token.id}:${token.status}`));
