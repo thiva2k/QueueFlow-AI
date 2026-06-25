@@ -1,0 +1,40 @@
+name: CI
+
+# Guardrail: prove the backend installs from wheels and passes tests on the
+# exact Python version Render deploys with, so a runtime/dependency mismatch
+# (e.g. a missing pydantic-core wheel forcing a Rust source build) fails here
+# on the PR instead of in production on Render.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (install + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Single source of truth: same pin Render reads (backend/.python-version).
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies (must resolve to wheels, no source build)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --only-binary=:all: -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q

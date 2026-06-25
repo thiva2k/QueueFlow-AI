@@ -1,0 +1,10 @@
+# Normalize line endings so Linux runtimes (Render, CI, Docker) never see a
+# stray CR. A CRLF in .python-version or a shell/YAML config can break parsing
+# on deploy regardless of the contributor's OS.
+* text=auto eol=lf
+
+# Files that MUST be LF — they are read by Linux tooling at build/deploy time.
+.python-version text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
