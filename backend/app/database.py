@@ -1,7 +1,7 @@
 import os
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 
@@ -16,6 +16,20 @@ def get_database_url() -> str:
     return os.getenv("QUEUEFLOW_DATABASE_URL", "sqlite:///./queueflow.db")
 
 
+def _configure_sqlite(dbapi_connection, _connection_record) -> None:
+    """Make SQLite safe under concurrent counters.
+
+    WAL allows readers during a write; busy_timeout makes writers wait for a
+    lock instead of raising ``database is locked``; foreign_keys enforces FK
+    integrity (off by default in SQLite).
+    """
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
 def get_engine():
     global _database_url, _engine, _session_local
 
@@ -23,6 +37,8 @@ def get_engine():
     if _engine is None or url != _database_url:
         connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
         _engine = create_engine(url, connect_args=connect_args)
+        if url.startswith("sqlite"):
+            event.listen(_engine, "connect", _configure_sqlite)
         _session_local = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
         _database_url = url
     return _engine

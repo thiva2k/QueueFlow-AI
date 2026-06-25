@@ -1,16 +1,45 @@
 from contextlib import asynccontextmanager
+import logging
 import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import init_db
+from app import models
+from app.auth import log_auth_mode
+from app.database import get_session_local, init_db
 from app.routers import admin, counters, services, tokens
+from app.seed import seed_demo_data
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("queueflow")
+
+
+def _seed_if_empty() -> None:
+    """Seed demo data when the database is empty.
+
+    Render's free disk is ephemeral, so the SQLite file is wiped on every
+    deploy/restart. Without this, the demo would come back up with an empty
+    queue until someone manually clicked "Reset". Controlled by SEED_ON_START
+    (default on); set SEED_ON_START=false for a real deployment with real data.
+    """
+    if os.getenv("SEED_ON_START", "true").strip().lower() in {"false", "0", "no"}:
+        return
+    session_local = get_session_local()
+    db = session_local()
+    try:
+        if db.query(models.Service).count() == 0:
+            summary = seed_demo_data(db)
+            logger.info("Seeded empty database: %s", summary)
+    finally:
+        db.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    log_auth_mode()
+    _seed_if_empty()
     yield
 
 

@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.auth import require_staff
 from app.database import get_db
 from app.services.prediction import recalculate_predictions
 
@@ -29,7 +30,12 @@ def list_counters(db: Session = Depends(get_db)):
     return db.query(models.Counter).order_by(models.Counter.id).all()
 
 
-@router.post("", response_model=schemas.CounterRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=schemas.CounterRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_staff)],
+)
 def create_counter(payload: schemas.CounterCreate, db: Session = Depends(get_db)):
     if payload.status not in {"active", "paused"}:
         raise HTTPException(status_code=400, detail="Counter status must be active or paused")
@@ -46,7 +52,7 @@ def create_counter(payload: schemas.CounterCreate, db: Session = Depends(get_db)
     return counter
 
 
-@router.patch("/{counter_id}/pause", response_model=schemas.CounterRead)
+@router.patch("/{counter_id}/pause", response_model=schemas.CounterRead, dependencies=[Depends(require_staff)])
 def pause_counter(counter_id: int, db: Session = Depends(get_db)):
     counter = get_counter_or_404(db, counter_id)
     if counter_has_open_token(db, counter):
@@ -58,7 +64,7 @@ def pause_counter(counter_id: int, db: Session = Depends(get_db)):
     return counter
 
 
-@router.patch("/{counter_id}/resume", response_model=schemas.CounterRead)
+@router.patch("/{counter_id}/resume", response_model=schemas.CounterRead, dependencies=[Depends(require_staff)])
 def resume_counter(counter_id: int, db: Session = Depends(get_db)):
     counter = get_counter_or_404(db, counter_id)
     counter.status = "active"

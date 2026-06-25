@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, MapPin, RefreshCcw, Ticket, Users } from "lucide-react";
 import { api } from "../api.js";
+import useVisiblePolling from "../useVisiblePolling.js";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -212,10 +213,7 @@ export default function CitizenTokenStatus({ tokenNumber }) {
     return () => window.clearInterval(clock);
   }, []);
 
-  useEffect(() => {
-    const poller = window.setInterval(() => fetchStatus({ silent: true }), POLL_INTERVAL_MS);
-    return () => window.clearInterval(poller);
-  }, [fetchStatus]);
+  useVisiblePolling(() => fetchStatus({ silent: true }), POLL_INTERVAL_MS);
 
   if (loading) {
     return (

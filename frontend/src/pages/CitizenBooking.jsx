@@ -32,6 +32,27 @@ function minutesUntil(value, now = new Date()) {
   return Math.ceil((new Date(value).getTime() - now.getTime()) / 60000);
 }
 
+// Sri Lankan phone: 9-12 digits, optionally starting with a single leading 0
+// or a +94 country code. Spaces/hyphens are stripped before testing.
+const PHONE_PATTERN = /^(?:\+94|0)?\d{9,12}$/;
+// Sri Lankan NIC: old format = 9 digits + V/X (case-insensitive),
+// new format = 12 digits.
+const NIC_PATTERN = /^(?:\d{9}[VvXx]|\d{12})$/;
+
+function validateName(value) {
+  if (!value.trim()) return "Please enter your full name.";
+  return "";
+}
+
+function validateNicOrPhone(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return "Please enter your NIC or phone number.";
+  if (NIC_PATTERN.test(trimmed)) return "";
+  const phoneCandidate = trimmed.replace(/[\s-]/g, "");
+  if (PHONE_PATTERN.test(phoneCandidate)) return "";
+  return "Enter a valid NIC (e.g. 901234567V or 200012345678) or phone number (e.g. 0771234567).";
+}
+
 function arrivalReceiptMessage(token) {
   const minutes = minutesUntil(token?.recommended_arrival_time);
   if (minutes == null) return "Keep this link open. Your recommended arrival time will update as the queue moves.";
@@ -47,6 +68,7 @@ export default function CitizenBooking({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({ citizen_name: "", nic_or_phone: "" });
   const [createdToken, setCreatedToken] = useState(null);
   const [copyMessage, setCopyMessage] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -87,14 +109,24 @@ export default function CitizenBooking({ onNavigate }) {
   function updateField(event) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+    // Clear a field's error as soon as the user edits it.
+    setFieldErrors((current) => (current[name] ? { ...current, [name]: "" } : current));
   }
 
   async function submitBooking(event) {
     event.preventDefault();
     setError("");
 
-    if (!form.citizen_name.trim() || !form.nic_or_phone.trim() || !form.service_id) {
-      setError("Please enter your name, NIC or phone number, and service type.");
+    const nextFieldErrors = {
+      citizen_name: validateName(form.citizen_name),
+      nic_or_phone: validateNicOrPhone(form.nic_or_phone),
+    };
+    setFieldErrors(nextFieldErrors);
+
+    if (nextFieldErrors.citizen_name || nextFieldErrors.nic_or_phone || !form.service_id) {
+      if (!form.service_id) {
+        setError("Please select a service type.");
+      }
       return;
     }
 
@@ -201,7 +233,12 @@ export default function CitizenBooking({ onNavigate }) {
             onChange={updateField}
             placeholder="Enter your full name"
             autoComplete="name"
+            aria-invalid={fieldErrors.citizen_name ? "true" : "false"}
+            aria-describedby="citizen_name_error"
           />
+          <p className="field-error" id="citizen_name_error" role="alert" aria-live="polite">
+            {fieldErrors.citizen_name}
+          </p>
 
           <label className="field-label" htmlFor="nic_or_phone">
             NIC or phone number
@@ -214,7 +251,12 @@ export default function CitizenBooking({ onNavigate }) {
             onChange={updateField}
             placeholder="NIC or mobile number"
             autoComplete="tel"
+            aria-invalid={fieldErrors.nic_or_phone ? "true" : "false"}
+            aria-describedby="nic_or_phone_error"
           />
+          <p className="field-error" id="nic_or_phone_error" role="alert" aria-live="polite">
+            {fieldErrors.nic_or_phone}
+          </p>
 
           <label className="field-label" htmlFor="service_id">
             Service type

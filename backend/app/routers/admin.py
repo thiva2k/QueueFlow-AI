@@ -4,12 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.auth import require_staff
 from app.database import get_db
 from app.seed import reset_demo_data, seed_demo_data
 from app.services.prediction import recalculate_predictions
 
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_staff)])
 
 
 def get_counter_or_404(db: Session, counter_id: int) -> models.Counter:
@@ -59,16 +60,42 @@ def call_next(counter_id: int, db: Session = Depends(get_db)):
     if token_is_open(current):
         raise HTTPException(status_code=400, detail="Counter already has an open token")
 
-    token = db.query(models.Token).filter(models.Token.status == "waiting").order_by(models.Token.id).first()
-    if not token:
-        raise HTTPException(status_code=404, detail="No waiting tokens")
+    # Atomically claim the oldest waiting token. Two counters calling next at
+    # the same time must never receive the same token, so we retry until a
+    # conditional UPDATE (guarded by status='waiting') actually wins a row.
+    called_at = datetime.now(timezone.utc)
+    claimed_id: int | None = None
+    for _ in range(50):
+        candidate = (
+            db.query(models.Token.id)
+            .filter(models.Token.status == "waiting")
+            .order_by(models.Token.id)
+            .first()
+        )
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="No waiting tokens")
 
-    token.status = "called"
-    token.called_at = datetime.now(timezone.utc)
-    counter.current_token_id = token.id
+        updated = (
+            db.query(models.Token)
+            .filter(models.Token.id == candidate.id, models.Token.status == "waiting")
+            .update(
+                {"status": "called", "called_at": called_at},
+                synchronize_session=False,
+            )
+        )
+        if updated == 1:
+            claimed_id = candidate.id
+            break
+        # Lost the race for this token; another counter claimed it first.
+        db.rollback()
+
+    if claimed_id is None:
+        raise HTTPException(status_code=409, detail="Could not claim a token, please retry")
+
+    counter.current_token_id = claimed_id
     db.commit()
     recalculate_predictions(db)
-    db.refresh(token)
+    token = db.get(models.Token, claimed_id)
     return token
 
 
@@ -82,11 +109,13 @@ def start_token(counter_id: int, token_id: int, db: Session = Depends(get_db)):
     if token_is_open(current) and current.id != token.id:
         raise HTTPException(status_code=400, detail="Counter already has an open token")
 
-    if token.status not in {"called", "waiting"}:
-        raise HTTPException(status_code=400, detail="Token cannot be started")
+    # Enforce waiting -> called -> serving: a token must have been called by
+    # this counter first. This prevents a counter from grabbing the queue head
+    # that another counter is about to call.
+    if token.status != "called":
+        raise HTTPException(status_code=400, detail="Token must be called before it can be started")
 
-    if token.status == "called":
-        ensure_counter_owns_token(counter, token)
+    ensure_counter_owns_token(counter, token)
 
     token.status = "serving"
     token.started_at = datetime.now(timezone.utc)

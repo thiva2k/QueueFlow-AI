@@ -64,7 +64,10 @@ class TokenRead(UTCDateTimeModel):
     id: int
     token_number: str
     citizen_name: str
-    nic_or_phone: str
+    # nic_or_phone is intentionally NOT exposed in read responses: it is
+    # national-ID / phone PII and the UI never displays it. It is accepted on
+    # create (TokenCreate) and stored, but never returned, preventing bulk PII
+    # harvesting via token enumeration.
     service_id: int
     status: str
     created_at: datetime

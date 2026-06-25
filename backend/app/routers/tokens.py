@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -30,26 +31,31 @@ def get_token_or_404(db: Session, token_id: int) -> models.Token:
     return token
 
 
-def next_token_number(db: Session) -> str:
-    next_number = db.query(models.Token).count() + 1
-    return f"A-{next_number:03d}"
-
-
 @router.post("/tokens", response_model=schemas.TokenRead, status_code=status.HTTP_201_CREATED)
 def create_token(payload: schemas.TokenCreate, db: Session = Depends(get_db)):
     service = db.get(models.Service, payload.service_id)
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
 
+    # Derive the token number from the row's own primary key so it is unique by
+    # construction — immune to the old count()+1 race (duplicate numbers under
+    # concurrency) and to collisions after a token is deleted.
     token = models.Token(
-        token_number=next_token_number(db),
+        token_number="",
         citizen_name=payload.citizen_name,
         nic_or_phone=payload.nic_or_phone,
         service_id=payload.service_id,
         status="waiting",
     )
     db.add(token)
-    db.commit()
+    try:
+        db.flush()  # assigns token.id without ending the transaction
+        token.token_number = f"A-{token.id:03d}"
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Could not create token, please retry") from exc
+
     db.refresh(token)
     recalculate_predictions(db)
     db.refresh(token)
