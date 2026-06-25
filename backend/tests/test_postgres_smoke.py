@@ -17,6 +17,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+# Make the backend package importable regardless of which test files run in
+# this session (CI runs this module in isolation, so we can't rely on another
+# test having already extended sys.path).
+_BACKEND_PATH = Path(__file__).resolve().parents[1]
+if str(_BACKEND_PATH) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_PATH))
+
 _PG = os.getenv("QUEUEFLOW_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(
     not _PG.startswith(("postgres://", "postgresql://", "postgresql+")),
