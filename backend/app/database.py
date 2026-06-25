@@ -12,8 +12,25 @@ _session_local = None
 _database_url = None
 
 
+def normalize_database_url(url: str) -> str:
+    """Normalize a database URL to a driver SQLAlchemy can use.
+
+    Managed Postgres providers (Render, Neon, Heroku) hand out URLs like
+    ``postgres://...`` or ``postgresql://...`` with no driver. We standardize on
+    psycopg 3 (``postgresql+psycopg://``) so a copy-pasted connection string just
+    works without editing.
+    """
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
 def get_database_url() -> str:
-    return os.getenv("QUEUEFLOW_DATABASE_URL", "sqlite:///./queueflow.db")
+    return normalize_database_url(
+        os.getenv("QUEUEFLOW_DATABASE_URL", "sqlite:///./queueflow.db")
+    )
 
 
 def _configure_sqlite(dbapi_connection, _connection_record) -> None:
@@ -35,9 +52,15 @@ def get_engine():
 
     url = get_database_url()
     if _engine is None or url != _database_url:
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-        _engine = create_engine(url, connect_args=connect_args)
-        if url.startswith("sqlite"):
+        is_sqlite = url.startswith("sqlite")
+        connect_args = {"check_same_thread": False} if is_sqlite else {}
+        engine_kwargs = {"connect_args": connect_args}
+        if not is_sqlite:
+            # Managed Postgres drops idle connections (free tiers especially);
+            # pre_ping revives them and recycle avoids stale sockets.
+            engine_kwargs.update(pool_pre_ping=True, pool_recycle=300)
+        _engine = create_engine(url, **engine_kwargs)
+        if is_sqlite:
             event.listen(_engine, "connect", _configure_sqlite)
         _session_local = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
         _database_url = url
