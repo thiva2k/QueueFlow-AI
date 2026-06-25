@@ -4,8 +4,10 @@ Backend plus React frontend for QueueFlow AI, an AI-powered smart queue manageme
 
 ## Setup
 
+The backend pins CPython `3.12.11` via `backend/.python-version`.
+
 ```powershell
-cd A:\EXITO\backend
+cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -43,6 +45,37 @@ Open the API docs at:
 http://127.0.0.1:8000/docs
 ```
 
+## Environment Variables
+
+See `backend/.env.example`. All are optional for a local demo.
+
+- `CORS_ORIGINS` — comma-separated allowed browser origins (no trailing slash).
+  In production this MUST include the deployed frontend origin.
+- `QUEUEFLOW_DATABASE_URL` — database URL. Defaults to local SQLite
+  (`sqlite:///./queueflow.db`). Use a managed Postgres URL in production.
+- `STAFF_API_KEY` — when set, all admin/counter/service-mutation endpoints
+  require an `X-API-Key: <value>` header (401 otherwise). When unset, the API
+  runs in open demo mode and logs a warning at startup. The frontend can send
+  this header when built with `VITE_STAFF_API_KEY`.
+- `SEED_ON_START` (default `true`) — auto-seeds demo data when the database is
+  empty on startup. Set to `false` for a real deployment so production data is
+  never auto-overwritten.
+
+## Production Notes / Security
+
+- **Staff auth** — `STAFF_API_KEY` gates admin/counter/service mutations;
+  citizen read/booking endpoints are never gated. See `app/auth.py`.
+- **PII protection** — `nic_or_phone` is accepted and stored on token creation
+  but never returned in any API read response (see `app/schemas.py`).
+- **Atomic token claiming** — `call-next` uses a conditional
+  `UPDATE ... WHERE status = 'waiting'`, preventing two counters from
+  double-serving the same token under concurrency (see `app/routers/admin.py`).
+- **SQLite WAL / busy-timeout** — SQLite connections enable WAL journaling, a
+  5s busy-timeout, and foreign-key enforcement (see `app/database.py`).
+- **Ephemeral storage limitation** — SQLite on Render's free tier is wiped on
+  every deploy/restart; `SEED_ON_START` repopulates demo data. The production
+  path is a managed Postgres via `QUEUEFLOW_DATABASE_URL` with `SEED_ON_START=false`.
+
 ## Test
 
 ```powershell
@@ -54,7 +87,7 @@ python -m pytest
 Start the backend in one terminal:
 
 ```powershell
-cd A:\EXITO\backend
+cd backend
 .\.venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload
 ```
@@ -62,7 +95,7 @@ uvicorn app.main:app --reload
 Then run the smoke test in a second terminal:
 
 ```powershell
-cd A:\EXITO\backend
+cd backend
 .\.venv\Scripts\Activate.ps1
 python test_flow.py
 ```
@@ -96,7 +129,7 @@ SUCCESS: QueueFlow AI backend smoke test passed.
 Start the backend:
 
 ```powershell
-cd A:\EXITO\backend
+cd backend
 .\.venv\Scripts\Activate.ps1
 python -m app.seed
 uvicorn app.main:app --reload
@@ -105,7 +138,7 @@ uvicorn app.main:app --reload
 Start the frontend in a second terminal:
 
 ```powershell
-cd A:\EXITO\frontend
+cd frontend
 npm.cmd install
 npm.cmd run dev
 ```
@@ -113,7 +146,7 @@ npm.cmd run dev
 Build the frontend:
 
 ```powershell
-cd A:\EXITO\frontend
+cd frontend
 npm.cmd run build
 ```
 
@@ -144,7 +177,7 @@ http://127.0.0.1:5173/display
 Optional browser smoke check:
 
 ```powershell
-cd A:\EXITO\frontend
+cd frontend
 npm.cmd run smoke
 npm.cmd run smoke:e2e
 ```

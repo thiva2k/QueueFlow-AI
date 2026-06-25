@@ -23,8 +23,10 @@ frontend/  React + Vite citizen portal, admin control center, public display, br
 
 ## Backend Setup
 
+The backend pins CPython `3.12.11` via `backend/.python-version`.
+
 ```powershell
-cd A:\EXITO\backend
+cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -35,7 +37,7 @@ uvicorn app.main:app --reload
 ## Frontend Setup
 
 ```powershell
-cd A:\EXITO\frontend
+cd frontend
 npm.cmd install
 npm.cmd run dev
 ```
@@ -66,14 +68,30 @@ Docs:          https://queueflow-ai-backend.onrender.com/docs
 Current production environment variables:
 
 ```text
-Vercel VITE_API_BASE_URL=https://queueflow-ai-backend.onrender.com
+Frontend VITE_API_BASE_URL=https://queueflow-ai-backend.onrender.com  (committed in frontend/.env.production)
 Render CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://project-0ppn4.vercel.app
-Render PYTHON_VERSION=3.12.13
+Render PYTHON_VERSION=3.12.11
 ```
+
+The frontend backend URL is now baked into the build via the committed
+`frontend/.env.production` file (`VITE_API_BASE_URL=https://queueflow-ai-backend.onrender.com`),
+so the deployed site reaches the Render backend even when the Vercel dashboard
+has no env var set. Previously the dashboard value was empty and the site fell
+back to `http://127.0.0.1:8000`, which fails in production.
+
+> **WARNING:** A `VITE_API_BASE_URL` value set in the Vercel dashboard (even an
+> empty string) OVERRIDES `frontend/.env.production`. If the deployed site is
+> calling `http://127.0.0.1:8000`, remove the empty/stale `VITE_API_BASE_URL`
+> from the Vercel project settings and redeploy.
 
 Before a live presentation, open the backend `/health` URL first, then open `/admin`, accept `Reset Demo Data`, and keep `/display?kiosk=true` ready in a separate tab.
 
 ### Backend on Render
+
+The canonical Render service is `queueflow-ai-backend`
+(https://queueflow-ai-backend.onrender.com). Two duplicate Render services,
+`QueueFlow-AI` and `queueflow-ai-api`, also exist; delete them to avoid
+confusion about which backend is live.
 
 Create a Render Web Service from `https://github.com/thiva2k/QueueFlow-AI`.
 
@@ -93,11 +111,25 @@ Required Render environment variable:
 CORS_ORIGINS=<Vercel frontend URL>,http://localhost:5173,http://127.0.0.1:5173
 ```
 
-Optional backend environment variable:
+`CORS_ORIGINS` must include the deployed frontend origin or the browser will
+block API calls.
+
+Optional backend environment variables (see `backend/.env.example`):
 
 ```text
-QUEUEFLOW_DATABASE_URL=sqlite:///./queueflow.db
+QUEUEFLOW_DATABASE_URL=sqlite:///./queueflow.db   # use a managed Postgres URL in production
+STAFF_API_KEY=<long-random-string>                # when set, staff endpoints require an X-API-Key header
+SEED_ON_START=true                                # auto-seed demo data when the DB is empty (default true)
 ```
+
+- **STAFF_API_KEY** — when set, all admin/counter/service-mutation endpoints
+  require an `X-API-Key: <value>` header; when unset, the API runs in open demo
+  mode (a warning is logged at startup). The frontend forwards this header when
+  built with `VITE_STAFF_API_KEY` set.
+- **SEED_ON_START** (default `true`) — auto-seeds demo data when the database is
+  empty on startup. Set to `false` for a real deployment so production data is
+  never auto-overwritten.
+- **CORS_ORIGINS** — must include the deployed frontend origin.
 
 The root `render.yaml` contains the same backend service settings and can be used as a Render Blueprint. After Render gives you the backend URL, verify:
 
@@ -124,17 +156,24 @@ Build command: npm run build
 Output directory: dist
 ```
 
-Required Vercel environment variable:
+Backend URL configuration:
 
-```text
-VITE_API_BASE_URL=<Render backend URL>
-```
-
-Example:
+The production backend URL is committed in `frontend/.env.production`:
 
 ```text
 VITE_API_BASE_URL=https://queueflow-ai-backend.onrender.com
 ```
+
+This is baked into the Vite build, so you do NOT need to set
+`VITE_API_BASE_URL` in the Vercel dashboard.
+
+> **WARNING:** A `VITE_API_BASE_URL` value set in the Vercel dashboard (even an
+> empty string) OVERRIDES `frontend/.env.production`. Keep the dashboard
+> variable unset (or matching the file). An empty dashboard value silently makes
+> the deployed site fall back to `http://127.0.0.1:8000` and break.
+
+Optionally, to forward a staff API key from the frontend, set
+`VITE_STAFF_API_KEY` in the Vercel dashboard to match the backend `STAFF_API_KEY`.
 
 The frontend falls back to `http://127.0.0.1:8000` for local development when `VITE_API_BASE_URL` is not set.
 
@@ -175,9 +214,29 @@ Before presenting:
 5. Open `<Vercel URL>/display?kiosk=true`.
 6. Keep the Render backend active before the demo starts.
 
-### SQLite Persistence Note
+### Production Notes / Security
 
-SQLite is acceptable for this competition demo because QueueFlow AI can recreate demo state with `Reset Demo Data`. It is not production-grade persistence on Render free-tier style filesystems, where local disk state may be temporary or reset across deployments and restarts. For production, move the backend to PostgreSQL and set `QUEUEFLOW_DATABASE_URL` to the production database URL.
+QueueFlow AI went through a production-hardening pass. Key points:
+
+- **Staff API-key auth** — set `STAFF_API_KEY` so admin/counter/service-mutation
+  endpoints require an `X-API-Key` header. Unset means open demo mode (warning
+  logged at startup). Citizen read/booking endpoints are never gated.
+- **PII protection** — `nic_or_phone` (national-ID / phone) is accepted and
+  stored on token creation but is never returned in any API read response,
+  preventing bulk PII exposure.
+- **Atomic token claiming** — calling the next token uses a conditional
+  `UPDATE ... WHERE status = 'waiting'`, so two counters cannot claim and
+  double-serve the same token under concurrency.
+- **SQLite WAL / busy-timeout** — SQLite connections enable WAL journaling, a
+  5s busy-timeout, and foreign-key enforcement so concurrent counters do not hit
+  `database is locked` errors.
+
+**Storage limitation:** SQLite on Render's free tier is EPHEMERAL. The disk is
+wiped on every deploy/restart, so all data is lost; `SEED_ON_START` repopulates
+the demo data automatically. This is acceptable for the demo (state is
+also recoverable with `Reset Demo Data`) but is not production persistence. The
+production path is a managed Postgres: set `QUEUEFLOW_DATABASE_URL` to the
+Postgres connection string and set `SEED_ON_START=false`.
 
 ## Competition Demo Flow
 
@@ -237,7 +296,7 @@ The intended 10-second story is simple: citizen books a token, QueueFlow predict
 Backend:
 
 ```powershell
-cd A:\EXITO\backend
+cd backend
 .\.venv\Scripts\Activate.ps1
 python -m pytest
 python test_flow.py
@@ -246,7 +305,7 @@ python test_flow.py
 Frontend:
 
 ```powershell
-cd A:\EXITO\frontend
+cd frontend
 npm.cmd run build
 npm.cmd run smoke
 npm.cmd run smoke:e2e
@@ -257,7 +316,8 @@ Browser smoke prerequisites: backend venv installed, frontend dependencies insta
 ## Known Limitations
 
 - Demo data is synthetic.
-- No login/authentication.
+- No per-user login; staff endpoints use a single shared `STAFF_API_KEY` (open demo mode when unset).
+- SQLite on Render free-tier is ephemeral; production needs managed Postgres.
 - No real SMS, WhatsApp, payment, or ML model.
 - Updates use polling instead of WebSockets.
 - QR codes are generated in the browser for local demo sharing.
