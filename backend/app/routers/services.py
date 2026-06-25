@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.auth import require_staff
 from app.database import get_db
 from app.services.prediction import recalculate_predictions
 
@@ -15,7 +16,12 @@ def list_services(db: Session = Depends(get_db)):
     return db.query(models.Service).order_by(models.Service.id).all()
 
 
-@router.post("", response_model=schemas.ServiceRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=schemas.ServiceRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_staff)],
+)
 def create_service(payload: schemas.ServiceCreate, db: Session = Depends(get_db)):
     service = models.Service(
         name=payload.name,

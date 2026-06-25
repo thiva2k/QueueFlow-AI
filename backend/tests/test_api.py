@@ -1,5 +1,6 @@
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -336,3 +337,186 @@ def test_counter_resume_recalculates_predictions(tmp_path):
 
     assert resume_response.status_code == 200
     assert resumed_estimate != paused_estimate
+
+
+# --- Concurrency -----------------------------------------------------------
+
+def test_concurrent_call_next_never_assigns_same_token_twice(tmp_path):
+    """Two counters calling next at the same instant must get distinct tokens.
+
+    This is the headline race for a queue system: without atomic claiming the
+    same citizen could be sent to two windows. We run several contended rounds.
+    """
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counters = client.get("/counters").json()
+    active = [c for c in counters if c["status"] == "active"]
+    assert len(active) == 2
+
+    all_claimed = []
+    for _ in range(10):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(
+                pool.map(
+                    lambda cid: client.post(f"/admin/call-next/{cid}"),
+                    [active[0]["id"], active[1]["id"]],
+                )
+            )
+        claimed = [r.json()["id"] for r in results if r.status_code == 200]
+        # The two counters in this round must never share a token id.
+        assert len(set(claimed)) == len(claimed)
+        all_claimed.extend(claimed)
+        # Free both counters for the next round.
+        for c in active:
+            current = client.get(f"/counters").json()
+            cur_id = next(x["current_token_id"] for x in current if x["id"] == c["id"])
+            if cur_id:
+                client.post(f"/admin/miss-token/{c['id']}/{cur_id}")
+
+    # Across all rounds, every claimed token id is unique — nobody served twice.
+    assert len(set(all_claimed)) == len(all_claimed)
+
+
+# --- State machine ---------------------------------------------------------
+
+def test_start_token_requires_called_state(tmp_path):
+    """A raw waiting token cannot jump straight to serving (must be called first)."""
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+    waiting = next(t for t in client.get("/tokens").json() if t["status"] == "waiting")
+
+    response = client.post(f"/admin/start-token/{counter['id']}/{waiting['id']}")
+    assert response.status_code == 400
+    assert "called" in response.json()["detail"]
+
+
+def test_start_token_rejected_on_paused_counter(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+    # Counter cannot be paused while holding an open token, so miss it first,
+    # then pause, then a fresh call/start attempt must be blocked.
+    client.post(f"/admin/miss-token/{counter['id']}/{called['id']}")
+    client.patch(f"/counters/{counter['id']}/pause")
+
+    response = client.post(f"/admin/call-next/{counter['id']}")
+    assert response.status_code == 400
+    assert "paused" in response.json()["detail"]
+
+
+# --- Not-found / validation branches --------------------------------------
+
+def test_admin_actions_return_404_for_unknown_ids(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+
+    assert client.post("/admin/call-next/999999").status_code == 404
+    assert client.post("/admin/start-token/999999/1").status_code == 404
+    assert client.post("/admin/complete-token/1/999999").status_code == 404
+    assert client.post("/admin/miss-token/1/999999").status_code == 404
+
+
+def test_create_token_with_unknown_service_returns_404(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+
+    response = client.post(
+        "/tokens",
+        json={"citizen_name": "Nimal", "nic_or_phone": "0770000000", "service_id": 999999},
+    )
+    assert response.status_code == 404
+    assert "Service not found" in response.json()["detail"]
+
+
+def test_duplicate_service_and_counter_names_return_400(tmp_path):
+    client = make_client(tmp_path)
+    client.post("/services", json={"name": "Passports", "default_duration_minutes": 5})
+    dup_service = client.post("/services", json={"name": "Passports", "default_duration_minutes": 5})
+    assert dup_service.status_code == 400
+
+    client.post("/counters", json={"name": "Window 9", "status": "active"})
+    dup_counter = client.post("/counters", json={"name": "Window 9", "status": "active"})
+    assert dup_counter.status_code == 400
+
+
+def test_create_counter_rejects_invalid_status(tmp_path):
+    client = make_client(tmp_path)
+    response = client.post("/counters", json={"name": "Bad", "status": "banana"})
+    assert response.status_code == 400
+
+
+# --- Prediction edge cases -------------------------------------------------
+
+def test_prediction_with_all_counters_paused_does_not_crash(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    for counter in client.get("/counters").json():
+        client.patch(f"/counters/{counter['id']}/pause")
+
+    token_id = client.get("/tokens/by-number/A-010").json()["id"]
+    prediction = client.get(f"/tokens/{token_id}/prediction")
+    assert prediction.status_code == 200
+    assert prediction.json()["estimated_service_time"] is not None
+
+    status = client.get("/queue/status")
+    assert status.status_code == 200
+    assert status.json()["active_counters"] == 0
+
+
+# --- Privacy / PII ---------------------------------------------------------
+
+def test_pii_is_never_returned_in_read_responses(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    service_id = client.get("/services").json()[0]["id"]
+    client.post(
+        "/tokens",
+        json={"citizen_name": "Asha", "nic_or_phone": "991234567V", "service_id": service_id},
+    )
+
+    by_number = client.get("/tokens/by-number/A-001").json()
+    one = client.get("/tokens/1").json()
+    listed = client.get("/tokens").json()
+    queue = client.get("/queue/status").json()
+
+    assert "nic_or_phone" not in by_number
+    assert "nic_or_phone" not in one
+    assert all("nic_or_phone" not in t for t in listed)
+    for bucket in ("now_serving", "waiting", "called"):
+        assert all("nic_or_phone" not in t for t in queue[bucket])
+
+
+# --- Authentication --------------------------------------------------------
+
+def test_staff_endpoints_require_api_key_when_configured(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+
+    os.environ["STAFF_API_KEY"] = "s3cret-demo-key"
+    try:
+        # Without the key -> 401.
+        unauth = client.post(f"/admin/call-next/{counter['id']}")
+        assert unauth.status_code == 401
+
+        # Citizen reads stay open even with auth enabled.
+        assert client.get("/queue/status").status_code == 200
+        assert client.get("/tokens").status_code == 200
+
+        # With the correct key -> allowed.
+        ok = client.post(
+            f"/admin/call-next/{counter['id']}",
+            headers={"X-API-Key": "s3cret-demo-key"},
+        )
+        assert ok.status_code == 200
+
+        # Wrong key -> 401.
+        wrong = client.post(
+            f"/admin/start-token/{counter['id']}/{ok.json()['id']}",
+            headers={"X-API-Key": "nope"},
+        )
+        assert wrong.status_code == 401
+    finally:
+        os.environ.pop("STAFF_API_KEY", None)

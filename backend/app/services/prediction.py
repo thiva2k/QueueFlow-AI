@@ -74,7 +74,9 @@ def predict_token(db: Session, token: models.Token, now: datetime | None = None)
     now = now or datetime.now(timezone.utc)
     active_counters = max(count_active_counters(db), 1)
     people_ahead = count_people_ahead(db, token)
-    service_duration = get_service_duration(db, token.service)
+    # Floor to 1 min so a misconfigured/zero-duration service can't zero out
+    # every wait estimate.
+    service_duration = max(get_service_duration(db, token.service), 1.0)
     extra_delay = get_extra_delay_minutes(db, now) if token.status in ("waiting", "called") else 0
     estimated_wait = (people_ahead / active_counters) * service_duration + extra_delay
     estimated_service_time = now + timedelta(minutes=estimated_wait)
