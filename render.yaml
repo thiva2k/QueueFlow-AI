@@ -1,8 +1,15 @@
+# Render Blueprint — single source of truth for the QueueFlow backend service.
+# Deploy/manage via Render Blueprints so dashboard config can't silently drift.
 services:
   - type: web
     name: queueflow-ai-backend
     runtime: python
     rootDir: backend
+    # Python version is pinned in backend/.python-version (read by both Render
+    # and CI). Do NOT rely on Render's default interpreter: pydantic-core ships
+    # no wheel for newer CPython (e.g. 3.14), which forces a Rust source build
+    # that fails on Render's read-only Cargo registry. Keep this on a CPython
+    # line that has prebuilt wheels (3.12).
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
