@@ -83,6 +83,23 @@ def test_demo_reset_creates_realistic_counter_state(tmp_path):
     assert called["token_number"] == "A-003"
 
 
+def test_api_serializes_datetimes_as_explicit_utc(tmp_path):
+    client = make_client(tmp_path)
+    reset_demo(client)
+
+    token = client.get("/tokens/by-number/A-001").json()
+    assert token["created_at"].endswith("Z")
+    assert token["called_at"].endswith("Z")
+    assert token["started_at"].endswith("Z")
+    assert token["estimated_service_time"].endswith("Z")
+    assert token["recommended_arrival_time"].endswith("Z")
+
+    service = client.get("/services").json()[0]
+    counter = client.get("/counters").json()[0]
+    assert service["created_at"].endswith("Z")
+    assert counter["created_at"].endswith("Z")
+
+
 def test_vite_frontend_origin_is_allowed(tmp_path):
     client = make_client(tmp_path)
 

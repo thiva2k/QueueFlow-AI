@@ -1,6 +1,30 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
+
+def serialize_utc_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat().replace("+00:00", "Z")
+
+
+class UTCDateTimeModel(BaseModel):
+    @field_serializer(
+        "created_at",
+        "called_at",
+        "started_at",
+        "completed_at",
+        "estimated_service_time",
+        "recommended_arrival_time",
+        check_fields=False,
+    )
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        return serialize_utc_datetime(value)
 
 
 class ServiceCreate(BaseModel):
@@ -8,7 +32,7 @@ class ServiceCreate(BaseModel):
     default_duration_minutes: int = Field(gt=0)
 
 
-class ServiceRead(ServiceCreate):
+class ServiceRead(ServiceCreate, UTCDateTimeModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -20,7 +44,7 @@ class CounterCreate(BaseModel):
     status: str = "active"
 
 
-class CounterRead(CounterCreate):
+class CounterRead(CounterCreate, UTCDateTimeModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -34,7 +58,7 @@ class TokenCreate(BaseModel):
     service_id: int
 
 
-class TokenRead(BaseModel):
+class TokenRead(UTCDateTimeModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -53,7 +77,7 @@ class TokenRead(BaseModel):
     people_ahead: int | None = None
 
 
-class PredictionRead(BaseModel):
+class PredictionRead(UTCDateTimeModel):
     token_id: int
     token_number: str
     people_ahead: int
