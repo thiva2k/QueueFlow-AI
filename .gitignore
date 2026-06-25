@@ -25,6 +25,8 @@ frontend/citizen-portal-smoke.png
 .env
 .env.*
 !.env.example
+# Committed, non-secret build-time config (public backend URL only).
+!frontend/.env.production
 *.pem
 *.key
 
