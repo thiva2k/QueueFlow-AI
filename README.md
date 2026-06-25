@@ -51,6 +51,28 @@ QueueFlow AI is deployment-ready as two separate services:
 
 Do not deploy the backend inside Vercel for this MVP. Vercel should host only the `frontend` app, and Render should host only the `backend` API.
 
+### Live Demo Deployment
+
+```text
+Frontend:      https://project-0ppn4.vercel.app
+Citizen:       https://project-0ppn4.vercel.app/book
+Admin:         https://project-0ppn4.vercel.app/admin
+Public display:https://project-0ppn4.vercel.app/display?kiosk=true
+Backend:       https://queueflow-ai-backend.onrender.com
+Health:        https://queueflow-ai-backend.onrender.com/health
+Docs:          https://queueflow-ai-backend.onrender.com/docs
+```
+
+Current production environment variables:
+
+```text
+Vercel VITE_API_BASE_URL=https://queueflow-ai-backend.onrender.com
+Render CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://project-0ppn4.vercel.app
+Render PYTHON_VERSION=3.12.13
+```
+
+Before a live presentation, open the backend `/health` URL first, then open `/admin`, accept `Reset Demo Data`, and keep `/display?kiosk=true` ready in a separate tab.
+
 ### Backend on Render
 
 Create a Render Web Service from `https://github.com/thiva2k/QueueFlow-AI`.
