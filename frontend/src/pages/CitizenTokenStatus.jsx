@@ -133,6 +133,28 @@ function StatusBadge({ status }) {
   return <span className={`status-badge status-${status || "unknown"}`}>{TOKEN_STATUS_LABELS[status] || status || "unknown"}</span>;
 }
 
+const PROGRESS_STEPS = ["Waiting", "Called", "Serving", "Completed"];
+
+function TokenProgress({ status }) {
+  const activeIndex = { waiting: 0, called: 1, serving: 2, completed: 3 }[status] ?? -1;
+  return (
+    <div className="token-progress">
+      <p className="section-kicker">Token journey</p>
+      <div className="flow-rail" aria-label={`Token progress: ${TOKEN_STATUS_LABELS[status] || "waiting"}`}>
+        {PROGRESS_STEPS.map((label, index) => {
+          const state = index < activeIndex ? "is-done" : index === activeIndex ? "is-active" : "";
+          return (
+            <div className={`flow-step ${state}`} key={label}>
+              <span className="flow-node" aria-hidden="true" />
+              <span className="flow-label">{label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function CitizenTokenStatus({ tokenNumber }) {
   const [token, setToken] = useState(null);
   const [services, setServices] = useState([]);
@@ -268,6 +290,8 @@ export default function CitizenTokenStatus({ tokenNumber }) {
           {predictionNotice}
         </div>
       ) : null}
+
+      <TokenProgress status={token?.status} />
 
       <section className="token-status-grid">
         <article className="token-main-card">

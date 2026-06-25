@@ -410,9 +410,9 @@ export default function AdminDashboard() {
     <main className="dashboard-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">QueueFlow AI Admin</p>
-          <h1>QueueFlow AI Control Center</h1>
-          <p className="page-subtitle">Predictive arrival-time engine for smarter queues.</p>
+          <p className="eyebrow">QueueFlow AI · Operations</p>
+          <h1>Predictive Queue Control Center</h1>
+          <p className="page-subtitle">Live counters, arrival predictions, and demo controls in one place.</p>
         </div>
         <div className="topbar-meta">
           <span className="clock-pill">
@@ -469,14 +469,28 @@ export default function AdminDashboard() {
               const elapsed = minutesBetween(currentToken?.started_at, now);
               const delayedBy = delayMinutes(servicesById, currentToken, now);
 
+              const deskState =
+                counter.status === "paused"
+                  ? ""
+                  : delayedBy
+                    ? "is-delayed"
+                    : currentToken?.status === "serving"
+                      ? "has-serving"
+                      : currentToken?.status === "called"
+                        ? "has-called"
+                        : "";
+
               return (
-                <article className={`counter-card counter-state-${counter.status}`} key={counter.id}>
+                <article className={`counter-card counter-state-${counter.status} ${deskState}`} key={counter.id}>
                   <div className="counter-title">
                     <div>
-                      <h3>{counter.name}</h3>
+                      <h3>
+                        <span className="led" aria-hidden="true" />
+                        {counter.name}
+                      </h3>
                       <StatusBadge status={counter.status} type="counter" />
                     </div>
-                    <span className="counter-token">{currentToken?.token_number || "No token"}</span>
+                    <span className="counter-token">{currentToken?.token_number || "—"}</span>
                   </div>
 
                   {counter.status === "paused" ? (
@@ -579,6 +593,28 @@ export default function AdminDashboard() {
                     <dd>{lastUpdated ? formatDateTime(lastUpdated.toISOString()) : "Pending"}</dd>
                   </div>
                 </dl>
+                <div className="flow-rail" aria-label="How the recommended arrival time is produced">
+                  <div className="flow-step is-done">
+                    <span className="flow-node" aria-hidden="true" />
+                    <span className="flow-label">Queue movement</span>
+                    <span className="flow-sub">Live positions</span>
+                  </div>
+                  <div className="flow-step is-done">
+                    <span className="flow-node" aria-hidden="true" />
+                    <span className="flow-label">Delay detected</span>
+                    <span className="flow-sub">Overrun tracked</span>
+                  </div>
+                  <div className="flow-step is-done">
+                    <span className="flow-node" aria-hidden="true" />
+                    <span className="flow-label">Prediction updated</span>
+                    <span className="flow-sub">Recalculated</span>
+                  </div>
+                  <div className="flow-step is-active">
+                    <span className="flow-node" aria-hidden="true" />
+                    <span className="flow-label">Recommended arrival</span>
+                    <span className="flow-sub">Sent to citizen</span>
+                  </div>
+                </div>
               </>
             ) : (
               <div className="empty-state compact">No waiting citizens to predict.</div>
