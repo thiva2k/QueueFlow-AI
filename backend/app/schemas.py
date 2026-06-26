@@ -86,6 +86,11 @@ class PredictionRead(UTCDateTimeModel):
     people_ahead: int
     estimated_service_time: datetime | None
     recommended_arrival_time: datetime | None
+    # Explainability — the live inputs behind this recommendation.
+    active_counters: int = 0
+    average_service_minutes: float = 0
+    current_delay_minutes: float = 0
+    factors: list[str] = Field(default_factory=list)
 
 
 class QueueStatusRead(BaseModel):

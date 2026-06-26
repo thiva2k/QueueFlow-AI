@@ -9,6 +9,7 @@ from app.database import get_db
 from app.services.prediction import (
     count_active_counters,
     count_people_ahead,
+    explain_prediction,
     get_average_service_duration,
     predict_token,
     recalculate_predictions,
@@ -82,12 +83,14 @@ def get_token_prediction(token_id: int, db: Session = Depends(get_db)):
     if token.status in {"completed", "missed"}:
         raise HTTPException(status_code=400, detail="Cannot predict a closed token")
     people_ahead, estimated_service_time, recommended_arrival_time = predict_token(db, token)
+    explanation = explain_prediction(db, token)
     return schemas.PredictionRead(
         token_id=token.id,
         token_number=token.token_number,
         people_ahead=people_ahead,
         estimated_service_time=estimated_service_time,
         recommended_arrival_time=recommended_arrival_time,
+        **explanation,
     )
 
 

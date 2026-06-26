@@ -282,6 +282,14 @@ button { font-family: inherit; cursor: pointer; }
 .prediction-detail-list > div:nth-child(3) dt { color: var(--predict-strong); font-weight: 600; }
 .prediction-detail-list > div:nth-child(3) dd { color: var(--predict-strong); }
 
+/* Explainability — the live reasoning behind a prediction */
+.prediction-why { margin-top: var(--s4); padding: var(--s4); border: 1px dashed var(--predict-line); border-radius: var(--r); background: var(--predict-soft); }
+.prediction-why-title { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--predict-strong); margin: 0 0 0.5rem; }
+.prediction-why ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.prediction-why li { position: relative; padding-left: 1.1rem; font-size: 0.86rem; color: var(--ink); line-height: 1.45; }
+.prediction-why li::before { content: ""; position: absolute; left: 0; top: 0.52rem; width: 6px; height: 6px; border-radius: 50%; background: var(--predict); }
+.citizen-why { margin-bottom: var(--s4); box-shadow: var(--shadow-sm); }
+
 .demo-health-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
 .demo-health-list li { display: flex; align-items: center; gap: 0.55rem; padding: 0.5rem 0.65rem; border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--line); font-size: 0.85rem; color: var(--ink-2); }
 .demo-health-list li svg { color: var(--ink-3); flex-shrink: 0; }

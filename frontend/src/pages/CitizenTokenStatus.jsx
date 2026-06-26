@@ -167,6 +167,7 @@ export default function CitizenTokenStatus({ tokenNumber }) {
   const [error, setError] = useState("");
   const [errorStatus, setErrorStatus] = useState(null);
   const [predictionNotice, setPredictionNotice] = useState("");
+  const [predictionFactors, setPredictionFactors] = useState(null);
   const previousPredictionRef = useRef(null);
 
   const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
@@ -236,6 +237,27 @@ export default function CitizenTokenStatus({ tokenNumber }) {
   }, []);
 
   useVisiblePolling(() => fetchStatus({ silent: true }), POLL_INTERVAL_MS);
+
+  // Fetch the plain-language reasoning behind this token's recommended time
+  // while it is still in the queue.
+  useEffect(() => {
+    let cancelled = false;
+    if (!token?.id || !["waiting", "called", "serving"].includes(token.status)) {
+      setPredictionFactors(null);
+      return undefined;
+    }
+    api
+      .getTokenPrediction(token.id)
+      .then((prediction) => {
+        if (!cancelled) setPredictionFactors(prediction);
+      })
+      .catch(() => {
+        if (!cancelled) setPredictionFactors(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token?.id, token?.status, lastUpdated]);
 
   if (loading) {
     return (
@@ -342,6 +364,17 @@ export default function CitizenTokenStatus({ tokenNumber }) {
           <strong>{peopleAheadLabel(token)}</strong>
         </article>
       </section>
+
+      {predictionFactors?.factors?.length ? (
+        <section className="prediction-why citizen-why" aria-label="How your recommended time is calculated">
+          <p className="prediction-why-title">How your time is calculated</p>
+          <ul>
+            {predictionFactors.factors.map((factor, index) => (
+              <li key={index}>{factor}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="citizen-info-row">
         <article className="explanation-panel">
