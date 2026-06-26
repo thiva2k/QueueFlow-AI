@@ -3,7 +3,6 @@ import {
   AlertCircle,
   ArrowRight,
   Building2,
-  CheckCircle2,
   Clock3,
   Copy,
   ExternalLink,
@@ -51,14 +50,6 @@ function validateNicOrPhone(value) {
   const phoneCandidate = trimmed.replace(/[\s-]/g, "");
   if (PHONE_PATTERN.test(phoneCandidate)) return "";
   return "Enter a valid NIC (e.g. 901234567V or 200012345678) or phone number (e.g. 0771234567).";
-}
-
-function arrivalReceiptMessage(token) {
-  const minutes = minutesUntil(token?.recommended_arrival_time);
-  if (minutes == null) return "Keep this link open. Your recommended arrival time will update as the queue moves.";
-  if (minutes <= 0) return "Please come to the office now. Your recommended arrival time has arrived.";
-  if (minutes <= 15) return "Please start heading to the office soon.";
-  return "Arrive at the recommended time, not the appointment time.";
 }
 
 export default function CitizenBooking({ onNavigate }) {
