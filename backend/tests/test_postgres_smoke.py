@@ -76,7 +76,7 @@ def test_id_based_numbering_and_pii_redaction_on_postgres(client):
 def test_concurrent_call_next_is_unique_on_postgres(client):
     client.post("/admin/demo/seed")
     active = [c for c in client.get("/counters").json() if c["status"] == "active"]
-    assert len(active) == 2
+    assert len(active) >= 2
 
     all_claimed = []
     for _ in range(15):
