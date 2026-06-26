@@ -490,6 +490,58 @@ def test_pii_is_never_returned_in_read_responses(tmp_path):
 
 # --- Authentication --------------------------------------------------------
 
+def test_prediction_is_explainable(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    waiting_id = client.get("/tokens/by-number/A-010").json()["id"]
+
+    pred = client.get(f"/tokens/{waiting_id}/prediction").json()
+    assert isinstance(pred["factors"], list)
+    assert len(pred["factors"]) >= 2
+    assert pred["active_counters"] >= 1
+    assert pred["average_service_minutes"] > 0
+    # Nothing is overrunning right after a clean seed.
+    assert pred["current_delay_minutes"] == 0
+    assert any("on schedule" in factor.lower() for factor in pred["factors"])
+
+
+def test_prediction_explains_live_delay(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+    client.post(f"/admin/start-token/{counter['id']}/{called['id']}")
+    client.post(f"/admin/demo/simulate-delay/{called['id']}?extra_minutes=10")
+
+    waiting_id = client.get("/tokens/by-number/A-020").json()["id"]
+    pred = client.get(f"/tokens/{waiting_id}/prediction").json()
+
+    assert pred["current_delay_minutes"] > 0
+    assert any("delay detected" in factor.lower() for factor in pred["factors"])
+
+
+def test_service_time_learns_from_recent_completions(tmp_path):
+    """A burst of slow completions should pull the learned estimate above baseline."""
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counters = client.get("/counters").json()
+    service_id = client.get("/services").json()[0]["id"]
+    waiting_id = client.get("/tokens/by-number/A-010").json()["id"]
+    baseline = client.get(f"/tokens/{waiting_id}/prediction").json()["average_service_minutes"]
+
+    # Complete several visits that each overran by a lot, then read the estimate.
+    counter = counters[0]
+    for _ in range(3):
+        called = client.post(f"/admin/call-next/{counter['id']}").json()
+        client.post(f"/admin/start-token/{counter['id']}/{called['id']}")
+        client.post(f"/admin/demo/simulate-delay/{called['id']}?extra_minutes=30")
+        client.post(f"/admin/complete-token/{counter['id']}/{called['id']}")
+
+    learned = client.get(f"/tokens/{waiting_id}/prediction").json()
+    assert learned["average_service_minutes"] > baseline
+    assert any("learned from" in factor.lower() for factor in learned["factors"])
+
+
 def test_staff_endpoints_require_api_key_when_configured(tmp_path):
     client = make_client(tmp_path)
     seed_demo(client)

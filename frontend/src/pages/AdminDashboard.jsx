@@ -143,6 +143,7 @@ export default function AdminDashboard() {
   const [message, setMessage] = useState({ type: "info", text: "Dashboard ready." });
   const [backendConnected, setBackendConnected] = useState(false);
   const [lastPredictionEvent, setLastPredictionEvent] = useState("");
+  const [predictionFactors, setPredictionFactors] = useState(null);
 
   const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const tokensById = useMemo(() => buildTokenMap(queue, tokens), [queue, tokens]);
@@ -192,6 +193,27 @@ export default function AdminDashboard() {
   useVisiblePolling(() => {
     if (!actionKey) fetchDashboard({ silent: true });
   }, POLL_INTERVAL_MS);
+
+  // Pull the live reasoning behind the next citizen's recommended arrival time,
+  // refreshed whenever the queue updates.
+  useEffect(() => {
+    let cancelled = false;
+    if (!nextWaitingToken?.id) {
+      setPredictionFactors(null);
+      return undefined;
+    }
+    api
+      .getTokenPrediction(nextWaitingToken.id)
+      .then((prediction) => {
+        if (!cancelled) setPredictionFactors(prediction);
+      })
+      .catch(() => {
+        if (!cancelled) setPredictionFactors(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [nextWaitingToken?.id, lastUpdated]);
 
   async function runAction(key, pendingText, action, successText, options = {}) {
     setActionKey(key);
@@ -615,6 +637,16 @@ export default function AdminDashboard() {
                     <span className="flow-sub">Sent to citizen</span>
                   </div>
                 </div>
+                {predictionFactors?.factors?.length ? (
+                  <div className="prediction-why">
+                    <p className="prediction-why-title">Why this time</p>
+                    <ul>
+                      {predictionFactors.factors.map((factor, index) => (
+                        <li key={index}>{factor}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </>
             ) : (
               <div className="empty-state compact">No waiting citizens to predict.</div>

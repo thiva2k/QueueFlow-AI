@@ -75,6 +75,7 @@ export const api = {
   getCounters: () => request("/counters"),
   getTokens: () => request("/tokens"),
   getTokenByNumber: (tokenNumber) => request(`/tokens/by-number/${encodeURIComponent(tokenNumber)}`),
+  getTokenPrediction: (tokenId) => request(`/tokens/${tokenId}/prediction`),
   getQueueStatus: () => request("/queue/status"),
   createToken: (payload) => request("/tokens", { method: "POST", body: JSON.stringify(payload) }),
   pauseCounter: (counterId) => request(`/counters/${counterId}/pause`, { method: "PATCH" }),
