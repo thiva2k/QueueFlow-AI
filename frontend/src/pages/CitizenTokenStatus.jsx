@@ -357,6 +357,9 @@ export default function CitizenTokenStatus({ tokenNumber }) {
           <MapPin size={22} aria-hidden="true" />
           <span>Recommended Arrival</span>
           <strong>{formatTime(token?.recommended_arrival_time)}</strong>
+          {predictionFactors?.confidence_minutes ? (
+            <small className="confidence-note">± {Math.round(predictionFactors.confidence_minutes)} min</small>
+          ) : null}
         </article>
         <article className="prediction-card" data-testid="token-people-ahead">
           <Users size={22} aria-hidden="true" />

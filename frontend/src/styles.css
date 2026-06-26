@@ -290,6 +290,16 @@ button { font-family: inherit; cursor: pointer; }
 .prediction-why li::before { content: ""; position: absolute; left: 0; top: 0.52rem; width: 6px; height: 6px; border-radius: 50%; background: var(--predict); }
 .citizen-why { margin-bottom: var(--s4); box-shadow: var(--shadow-sm); }
 
+/* No-show risk chip (admin counter "called" state) */
+.risk-chip { display: inline-flex; align-items: center; gap: 0.35rem; align-self: flex-start; margin-top: 0.3rem; font-family: var(--mono); font-size: 0.72rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.risk-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.risk-chip.low { color: var(--green); background: var(--green-soft); border-color: var(--green-line); }
+.risk-chip.medium { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-line); }
+.risk-chip.high { color: var(--red); background: var(--red-soft); border-color: var(--red-line); }
+
+/* Confidence band on the arrival card */
+.confidence-note { font-family: var(--mono); font-size: 0.72rem; color: inherit; opacity: 0.75; }
+
 .demo-health-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
 .demo-health-list li { display: flex; align-items: center; gap: 0.55rem; padding: 0.5rem 0.65rem; border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--line); font-size: 0.85rem; color: var(--ink-2); }
 .demo-health-list li svg { color: var(--ink-3); flex-shrink: 0; }

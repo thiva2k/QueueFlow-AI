@@ -1,3 +1,4 @@
+import statistics
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
@@ -100,6 +101,43 @@ def get_extra_delay_minutes(db: Session, now: datetime | None = None) -> float:
     return extra_delay
 
 
+def get_confidence_minutes(db: Session, token: models.Token) -> float:
+    """± uncertainty band on the arrival time.
+
+    Built from how much recent service times for this service have varied: a
+    consistent counter gives a tight band, an erratic one a wider band. The
+    band grows with the number of people ahead (independent errors add in
+    quadrature) and shrinks with more counters working in parallel.
+    """
+    durations = recent_service_durations(db, token.service)
+    if len(durations) < 2:
+        return 0.0
+    spread = statistics.pstdev(durations)
+    people = max(count_people_ahead(db, token), 1)
+    active = max(count_active_counters(db), 1)
+    return round(spread * (people ** 0.5) / active, 1)
+
+
+def no_show_risk(db: Session, token: models.Token, now: datetime | None = None) -> int | None:
+    """Likelihood (0-100) that a CALLED citizen will not show at the counter.
+
+    Combines this office's historical no-show rate with how long the citizen has
+    been called without arriving. Only meaningful while a token is `called`.
+    """
+    if not token or token.status != "called":
+        return None
+    now = now or datetime.now(timezone.utc)
+    missed = db.query(models.Token).filter(models.Token.status == "missed").count()
+    completed = db.query(models.Token).filter(models.Token.status == "completed").count()
+    history = missed + completed
+    base_rate = (missed / history) if history else 0.12  # mild prior before any history
+    dwell_minutes = 0.0
+    if token.called_at:
+        dwell_minutes = max((now - ensure_aware(token.called_at)).total_seconds() / 60, 0.0)
+    dwell_factor = min(dwell_minutes / 10, 1.0) * 0.5  # up to +50 points after ~10 min waiting
+    return round(min(base_rate + dwell_factor, 0.95) * 100)
+
+
 def get_counter_delays(db: Session, now: datetime | None = None) -> list[tuple[str, float]]:
     """(counter name, minutes over expected) for counters running late right now."""
     now = now or datetime.now(timezone.utc)
@@ -154,10 +192,17 @@ def explain_prediction(db: Session, token: models.Token, now: datetime | None = 
     if active == 0:
         factors.append("No counters are open right now — your time will update when one resumes")
 
+    confidence = get_confidence_minutes(db, token)
+    if confidence > 0:
+        factors.append(
+            f"Confidence ±{round(confidence)} min, from how consistent recent service times have been"
+        )
+
     return {
         "active_counters": active,
         "average_service_minutes": round(service_duration, 1),
         "current_delay_minutes": round(total_delay, 1),
+        "confidence_minutes": confidence,
         "factors": factors,
     }
 

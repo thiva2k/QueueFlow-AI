@@ -542,6 +542,49 @@ def test_service_time_learns_from_recent_completions(tmp_path):
     assert any("learned from" in factor.lower() for factor in learned["factors"])
 
 
+def test_prediction_has_no_confidence_band_without_history(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    waiting_id = client.get("/tokens/by-number/A-010").json()["id"]
+
+    pred = client.get(f"/tokens/{waiting_id}/prediction").json()
+    assert "confidence_minutes" in pred
+    assert pred["confidence_minutes"] == 0
+
+
+def test_prediction_reports_confidence_band_from_variance(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+
+    # Complete several visits with very different durations to create variance.
+    for extra in (2, 30, 4, 28):
+        called = client.post(f"/admin/call-next/{counter['id']}").json()
+        client.post(f"/admin/start-token/{counter['id']}/{called['id']}")
+        client.post(f"/admin/demo/simulate-delay/{called['id']}?extra_minutes={extra}")
+        client.post(f"/admin/complete-token/{counter['id']}/{called['id']}")
+
+    waiting_id = client.get("/tokens/by-number/A-010").json()["id"]
+    pred = client.get(f"/tokens/{waiting_id}/prediction").json()
+
+    assert pred["confidence_minutes"] > 0
+    assert any("consistent" in factor.lower() for factor in pred["factors"])
+
+
+def test_called_token_carries_no_show_risk(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+
+    waiting = client.get("/tokens/by-number/A-020").json()
+    assert waiting["no_show_risk"] is None
+
+    called_read = client.get(f"/tokens/{called['id']}").json()
+    assert isinstance(called_read["no_show_risk"], int)
+    assert 0 <= called_read["no_show_risk"] <= 100
+
+
 def test_staff_endpoints_require_api_key_when_configured(tmp_path):
     client = make_client(tmp_path)
     seed_demo(client)
