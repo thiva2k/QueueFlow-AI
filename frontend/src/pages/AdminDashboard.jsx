@@ -536,6 +536,15 @@ export default function AdminDashboard() {
                       <p>{currentToken.citizen_name || "Unnamed citizen"}</p>
                       <p>{serviceLabel}</p>
                       <p>Citizen called to counter. Waiting for arrival.</p>
+                      {typeof currentToken.no_show_risk === "number" ? (
+                        <span
+                          className={`risk-chip ${
+                            currentToken.no_show_risk >= 50 ? "high" : currentToken.no_show_risk >= 25 ? "medium" : "low"
+                          }`}
+                        >
+                          No-show risk {currentToken.no_show_risk}%
+                        </span>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -608,7 +617,12 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <dt>Recommended arrival time</dt>
-                    <dd>{formatTime(nextWaitingToken.recommended_arrival_time)}</dd>
+                    <dd>
+                      {formatTime(nextWaitingToken.recommended_arrival_time)}
+                      {predictionFactors?.confidence_minutes
+                        ? ` ± ${Math.round(predictionFactors.confidence_minutes)} min`
+                        : ""}
+                    </dd>
                   </div>
                   <div>
                     <dt>Last updated</dt>

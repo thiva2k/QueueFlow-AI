@@ -11,6 +11,7 @@ from app.services.prediction import (
     count_people_ahead,
     explain_prediction,
     get_average_service_duration,
+    no_show_risk,
     predict_token,
     recalculate_predictions,
 )
@@ -22,6 +23,7 @@ router = APIRouter(tags=["tokens"])
 def token_to_read(db: Session, token: models.Token) -> schemas.TokenRead:
     data = schemas.TokenRead.model_validate(token)
     data.people_ahead = count_people_ahead(db, token) if token.status in {"waiting", "called"} else 0
+    data.no_show_risk = no_show_risk(db, token)
     return data
 
 

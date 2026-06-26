@@ -78,6 +78,7 @@ class TokenRead(UTCDateTimeModel):
     recommended_arrival_time: datetime | None
     actual_duration_minutes: float | None
     people_ahead: int | None = None
+    no_show_risk: int | None = None
 
 
 class PredictionRead(UTCDateTimeModel):
@@ -90,6 +91,7 @@ class PredictionRead(UTCDateTimeModel):
     active_counters: int = 0
     average_service_minutes: float = 0
     current_delay_minutes: float = 0
+    confidence_minutes: float = 0
     factors: list[str] = Field(default_factory=list)
 
 
