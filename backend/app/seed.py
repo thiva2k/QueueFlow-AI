@@ -17,12 +17,14 @@ SEED_COUNTERS = [
     ("Counter 1", "active"),
     ("Counter 2", "active"),
     ("Counter 3", "paused"),
+    ("Counter 4", "active"),
 ]
 
 RESET_COUNTERS = [
     ("Counter 1", "active"),
     ("Counter 2", "active"),
     ("Counter 3", "active"),
+    ("Counter 4", "active"),
 ]
 
 

@@ -46,12 +46,12 @@ def test_health_and_seeded_demo_data(tmp_path):
     assert client.get("/docs").status_code == 200
     seeded = seed_demo(client)
 
-    assert seeded == {"services": 3, "counters": 3, "tokens": 20}
+    assert seeded == {"services": 3, "counters": 4, "tokens": 20}
     assert len(client.get("/services").json()) == 3
-    assert len(client.get("/counters").json()) == 3
+    assert len(client.get("/counters").json()) == 4
     assert len(client.get("/tokens").json()) == 20
     status = client.get("/queue/status").json()
-    assert status["active_counters"] == 2
+    assert status["active_counters"] == 3
     assert status["estimated_wait_for_last_token"] is not None
 
 
@@ -59,10 +59,10 @@ def test_demo_reset_creates_realistic_counter_state(tmp_path):
     client = make_client(tmp_path)
     reset = reset_demo(client)
 
-    assert reset == {"services": 3, "counters": 3, "tokens": 20}
+    assert reset == {"services": 3, "counters": 4, "tokens": 20}
 
     counters = client.get("/counters").json()
-    assert [counter["status"] for counter in counters] == ["active", "active", "active"]
+    assert [counter["status"] for counter in counters] == ["active", "active", "active", "active"]
     assert counters[0]["current_token_id"] is not None
     assert counters[1]["current_token_id"] is not None
     assert counters[2]["current_token_id"] is None
@@ -351,7 +351,7 @@ def test_concurrent_call_next_never_assigns_same_token_twice(tmp_path):
     seed_demo(client)
     counters = client.get("/counters").json()
     active = [c for c in counters if c["status"] == "active"]
-    assert len(active) == 2
+    assert len(active) >= 2
 
     all_claimed = []
     for _ in range(10):
