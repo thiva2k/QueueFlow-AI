@@ -193,20 +193,120 @@ export default function CitizenBooking({ onNavigate }) {
     <main className="citizen-shell">
       <section className="citizen-hero">
         <div>
-          <p className="eyebrow">QueueFlow AI Citizen Portal</p>
-          <h1>Book your queue token before you arrive</h1>
+          <p className="eyebrow">QueueFlow AI · Citizen check-in</p>
+          <h1>Check in without waiting in line</h1>
           <p className="hero-copy">
-            Get your token number, predicted service time, and the recommended arrival time that helps you avoid waiting.
+            Get a token, a predicted service time, and the time you should actually arrive — so you can skip the queue
+            instead of standing in it.
           </p>
         </div>
         <div className="citizen-hero-card">
           <Clock3 size={22} aria-hidden="true" />
-          <span>Live predictions from {API_BASE_URL}</span>
+          <span>Live predictions from this office</span>
         </div>
       </section>
 
       <section className="citizen-grid">
-        <form className="booking-panel" onSubmit={submitBooking}>
+        <aside className="citizen-side">
+          <div className="howto-panel">
+            <p className="section-kicker">How it works</p>
+            <h2>Skip the line, arrive on time</h2>
+            <ol className="howto-steps">
+              <li>
+                <div>
+                  <strong>Choose your service</strong>
+                  <span>Pick what you came to do at this office.</span>
+                </div>
+              </li>
+              <li>
+                <div>
+                  <strong>Get a predicted service time</strong>
+                  <span>QueueFlow AI estimates when you will be served.</span>
+                </div>
+              </li>
+              <li>
+                <div>
+                  <strong>Arrive at the recommended time</strong>
+                  <span>Come when it is nearly your turn — not before.</span>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <article className="citizen-stat-card">
+            <span>Waiting now</span>
+            <strong>{queue?.waiting?.length ?? "-"}</strong>
+          </article>
+          <article className="citizen-stat-card">
+            <span>Active counters</span>
+            <strong>{queue?.active_counters ?? "-"}</strong>
+          </article>
+          <article className="citizen-stat-card">
+            <span>Average service</span>
+            <strong>{queue?.average_service_duration == null ? "-" : formatMinutes(queue.average_service_duration)}</strong>
+          </article>
+          <div className="explanation-panel">
+            <ShieldCheck size={22} aria-hidden="true" />
+            <div>
+              <h2>How predictions work</h2>
+              <p>
+                QueueFlow AI continuously recalculates your estimated service time based on queue movement, service
+                duration, counter availability, and delays.
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        <div className="booking-col">
+          {createdToken ? (
+            <section className="booking-result-card" aria-live="polite" data-testid="booking-result">
+              <div>
+                <p className="section-kicker">You're checked in</p>
+                <strong>{createdToken.token_number}</strong>
+                <p>Your token is registered. You do not need to wait physically until your recommended arrival time.</p>
+              </div>
+              <div className="booking-result-grid">
+                <article>
+                  <span>Estimated Service Time</span>
+                  <strong>{formatTime(createdToken.estimated_service_time)}</strong>
+                </article>
+                <article>
+                  <span>Recommended Arrival Time</span>
+                  <strong>{formatTime(createdToken.recommended_arrival_time)}</strong>
+                </article>
+              </div>
+              <div className="qr-share-panel">
+                <div className="qr-frame" aria-label={`QR code for ${createdToken.token_number}`} data-testid="token-qr">
+                  {qrDataUrl ? <img src={qrDataUrl} alt={`QR code linking to ${createdToken.token_number} status`} /> : <QrCode size={72} aria-hidden="true" />}
+                </div>
+                <div>
+                  <label className="field-label compact" htmlFor="status_link">
+                    Token status link
+                  </label>
+                  <input
+                    id="status_link"
+                    value={statusUrl}
+                    readOnly
+                    onFocus={(event) => event.target.select()}
+                    data-testid="token-share-link"
+                  />
+                  <div className="share-actions">
+                    <button className="action-button secondary" type="button" onClick={copyStatusLink}>
+                      <Copy size={16} aria-hidden="true" />
+                      <span>Copy Link</span>
+                    </button>
+                    <button className="action-button" type="button" onClick={() => onNavigate(statusPath)}>
+                      <ExternalLink size={16} aria-hidden="true" />
+                      <span>Open Status Page</span>
+                    </button>
+                  </div>
+                  {copyMessage ? <p className="copy-message">{copyMessage}</p> : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <form className="booking-panel" onSubmit={submitBooking}>
           <div className="panel-header">
             <div>
               <p className="section-kicker">New token</p>
@@ -284,87 +384,11 @@ export default function CitizenBooking({ onNavigate }) {
           ) : null}
 
           <button className="citizen-primary" type="submit" disabled={loading || submitting || !services.length}>
-            <span>{submitting ? "Creating token..." : "Book Token"}</span>
+            <span>{submitting ? "Creating token..." : "Create Token"}</span>
             <ArrowRight size={18} aria-hidden="true" />
           </button>
         </form>
-
-        <aside className="citizen-side">
-          {createdToken ? (
-            <section className="booking-result-card" aria-live="polite" data-testid="booking-result">
-              <div>
-                <p className="section-kicker">Token created</p>
-                <strong>{createdToken.token_number}</strong>
-                <p>{arrivalReceiptMessage(createdToken)}</p>
-              </div>
-              <div className="booking-result-grid">
-                <article>
-                  <span>Estimated service</span>
-                  <strong>{formatTime(createdToken.estimated_service_time)}</strong>
-                </article>
-                <article>
-                  <span>Recommended arrival</span>
-                  <strong>{formatTime(createdToken.recommended_arrival_time)}</strong>
-                </article>
-              </div>
-              <div className="qr-share-panel">
-                <div className="qr-frame" aria-label={`QR code for ${createdToken.token_number}`} data-testid="token-qr">
-                  {qrDataUrl ? <img src={qrDataUrl} alt={`QR code linking to ${createdToken.token_number} status`} /> : <QrCode size={72} aria-hidden="true" />}
-                </div>
-                <div>
-                  <label className="field-label compact" htmlFor="status_link">
-                    Token status link
-                  </label>
-                  <input
-                    id="status_link"
-                    value={statusUrl}
-                    readOnly
-                    onFocus={(event) => event.target.select()}
-                    data-testid="token-share-link"
-                  />
-                  <div className="share-actions">
-                    <button className="action-button secondary" type="button" onClick={copyStatusLink}>
-                      <Copy size={16} aria-hidden="true" />
-                      <span>Copy Link</span>
-                    </button>
-                    <button className="action-button" type="button" onClick={() => onNavigate(statusPath)}>
-                      <ExternalLink size={16} aria-hidden="true" />
-                      <span>Open Status</span>
-                    </button>
-                  </div>
-                  {copyMessage ? <p className="copy-message">{copyMessage}</p> : null}
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          <article className="citizen-stat-card">
-            <span>Waiting now</span>
-            <strong>{queue?.waiting?.length ?? "-"}</strong>
-          </article>
-          <article className="citizen-stat-card">
-            <span>Active counters</span>
-            <strong>{queue?.active_counters ?? "-"}</strong>
-          </article>
-          <article className="citizen-stat-card">
-            <span>Average service</span>
-            <strong>{queue?.average_service_duration == null ? "-" : formatMinutes(queue.average_service_duration)}</strong>
-          </article>
-          <div className="explanation-panel">
-            <ShieldCheck size={22} aria-hidden="true" />
-            <div>
-              <h2>How predictions work</h2>
-              <p>
-                QueueFlow AI continuously recalculates your estimated service time based on queue movement, service
-                duration, counter availability, and delays.
-              </p>
-            </div>
-          </div>
-          <div className="citizen-alert success">
-            <CheckCircle2 size={18} aria-hidden="true" />
-            <span>Use your recommended arrival time to decide whether to wait away or come now.</span>
-          </div>
-        </aside>
+        </div>
       </section>
     </main>
   );
