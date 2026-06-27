@@ -101,6 +101,14 @@ def get_token(token_id: int, db: Session = Depends(get_db)):
     return token_to_read(db, get_token_or_404(db, token_id))
 
 
+@router.get("/model/info")
+def get_model_info():
+    """Status of the service-time prediction model (for explainability / demos)."""
+    from app.services import ml
+
+    return ml.model_info()
+
+
 @router.get("/queue/status", response_model=schemas.QueueStatusRead)
 def get_queue_status(db: Session = Depends(get_db)):
     tokens = db.query(models.Token).order_by(models.Token.id).all()

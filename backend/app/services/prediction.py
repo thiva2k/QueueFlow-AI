@@ -1,5 +1,7 @@
+import os
 import statistics
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -10,6 +12,13 @@ QUEUE_STATUSES = ("waiting", "called", "serving")
 
 # Recommend citizens arrive this many minutes before their estimated service.
 ARRIVAL_BUFFER = 15
+
+# The model's time-of-day signal is trained on local office hours, so the
+# current hour must be read in the office's timezone, not UTC.
+try:
+    OFFICE_TZ = ZoneInfo(os.getenv("OFFICE_TIMEZONE", "Asia/Colombo"))
+except Exception:  # pragma: no cover - missing tz database
+    OFFICE_TZ = timezone.utc
 
 
 def ensure_aware(value: datetime) -> datetime:
@@ -59,21 +68,32 @@ def recent_service_durations(db: Session, service: models.Service) -> list[float
     return [float(row[0]) for row in rows]
 
 
-def get_service_duration(db: Session, service: models.Service) -> float:
-    """Recency-weighted (EMA) estimate of how long this service is taking.
+def get_service_duration(db: Session, service: models.Service, now: datetime | None = None) -> float:
+    """Best estimate of how long this service is taking right now.
 
-    Instead of a flat historical average, weight recent completions more so the
-    estimate adapts to how fast counters are actually working right now. Falls
-    back to the configured baseline when there is no history yet.
+    1. If there is real recent history, use a recency-weighted EMA so the
+       estimate adapts to how fast counters are actually working today.
+    2. Otherwise (cold start) ask the trained service-time model for a
+       prediction at the current hour and load — far better than a static
+       default, since it knows time-of-day and queue-load patterns.
+    3. If the model is unavailable, fall back to the configured baseline.
     """
     durations = recent_service_durations(db, service)
-    if not durations:
-        return float(service.default_duration_minutes)
+    if durations:
+        ema = durations[-1]  # oldest in window seeds the average
+        for value in reversed(durations[:-1]):  # walk newest-last so recent dominates
+            ema = LEARNING_ALPHA * value + (1 - LEARNING_ALPHA) * ema
+        return float(ema)
 
-    ema = durations[-1]  # oldest in window seeds the average
-    for value in reversed(durations[:-1]):  # walk newest-last so recent dominates
-        ema = LEARNING_ALPHA * value + (1 - LEARNING_ALPHA) * ema
-    return float(ema)
+    from app.services import ml
+
+    now = now or datetime.now(timezone.utc)
+    queue_length = db.query(models.Token).filter(models.Token.status == "waiting").count()
+    local_hour = ensure_aware(now).astimezone(OFFICE_TZ).hour
+    predicted = ml.predict_duration(service.default_duration_minutes, local_hour, queue_length)
+    if predicted is not None:
+        return predicted
+    return float(service.default_duration_minutes)
 
 
 def count_active_counters(db: Session) -> int:
@@ -170,7 +190,7 @@ def explain_prediction(db: Session, token: models.Token, now: datetime | None = 
     active = count_active_counters(db)
     active_eff = max(active, 1)
     people = count_people_ahead(db, token)
-    service_duration = max(get_service_duration(db, token.service), 1.0)
+    service_duration = max(get_service_duration(db, token.service, now), 1.0)
     learned = min(len(recent_service_durations(db, token.service)), LEARNING_WINDOW)
     delays = get_counter_delays(db, now)
     total_delay = sum(over for _, over in delays)
@@ -186,7 +206,18 @@ def explain_prediction(db: Session, token: models.Token, now: datetime | None = 
             f"visit{'' if learned == 1 else 's'}: about {round(service_duration)} min each"
         )
     else:
-        factors.append(f"Using this office's baseline service time: about {round(service_duration)} min")
+        from app.services import ml
+
+        info = ml.model_info()
+        if info.get("trained"):
+            top = ml.top_factor() or "time of day"
+            factors.append(
+                f"Estimated by our service-time model (trained on {info['samples']} synthetic records that "
+                f"model time-of-day and queue-load patterns, weighting {top} most): "
+                f"about {round(service_duration)} min at this hour"
+            )
+        else:
+            factors.append(f"Using this office's baseline service time: about {round(service_duration)} min")
     if delays:
         named = ", ".join(f"{name} (+{round(over)} min)" for name, over in delays[:2])
         factors.append(f"Live delay detected — {named} running over; we added this to your wait")
@@ -216,7 +247,7 @@ def predict_token(db: Session, token: models.Token, now: datetime | None = None)
     people_ahead = count_people_ahead(db, token)
     # Floor to 1 min so a misconfigured/zero-duration service can't zero out
     # every wait estimate.
-    service_duration = max(get_service_duration(db, token.service), 1.0)
+    service_duration = max(get_service_duration(db, token.service, now), 1.0)
     extra_delay = get_extra_delay_minutes(db, now) if token.status in ("waiting", "called") else 0
     estimated_wait = (people_ahead / active_counters) * service_duration + extra_delay
     estimated_service_time = now + timedelta(minutes=estimated_wait)

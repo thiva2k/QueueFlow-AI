@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
+  Cpu,
   Pause,
   Play,
   RefreshCcw,
@@ -144,6 +145,7 @@ export default function AdminDashboard() {
   const [backendConnected, setBackendConnected] = useState(false);
   const [lastPredictionEvent, setLastPredictionEvent] = useState("");
   const [predictionFactors, setPredictionFactors] = useState(null);
+  const [modelInfo, setModelInfo] = useState(null);
 
   const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const tokensById = useMemo(() => buildTokenMap(queue, tokens), [queue, tokens]);
@@ -184,6 +186,13 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
+
+  useEffect(() => {
+    api
+      .getModelInfo()
+      .then((info) => setModelInfo(info))
+      .catch(() => setModelInfo(null));
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -589,6 +598,15 @@ export default function AdminDashboard() {
                 <p className="section-kicker">Prediction Engine</p>
                 <h2>Next Waiting Citizen</h2>
               </div>
+              {modelInfo?.trained ? (
+                <span
+                  className="model-badge"
+                  title={`Service-time model trained on ${modelInfo.samples} synthetic records (${modelInfo.data_source || "synthetic"})`}
+                >
+                  <Cpu size={13} aria-hidden="true" />
+                  ML model · {modelInfo.samples} synthetic
+                </span>
+              ) : null}
             </div>
             {nextWaitingToken ? (
               <>
