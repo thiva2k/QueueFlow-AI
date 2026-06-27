@@ -378,6 +378,10 @@ export default function CitizenBooking({ onNavigate }) {
             <span>{submitting ? "Creating token..." : "Create Token"}</span>
             <ArrowRight size={18} aria-hidden="true" />
           </button>
+          <button className="lookup-secondary booking-lookup-link" type="button" onClick={() => onNavigate("/track")}>
+            <span>Already have a token? Check its status</span>
+            <ArrowRight size={16} aria-hidden="true" />
+          </button>
         </form>
         </div>
       </section>

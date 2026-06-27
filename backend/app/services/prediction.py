@@ -8,6 +8,9 @@ from app import models
 
 QUEUE_STATUSES = ("waiting", "called", "serving")
 
+# Recommend citizens arrive this many minutes before their estimated service.
+ARRIVAL_BUFFER = 15
+
 
 def ensure_aware(value: datetime) -> datetime:
     if value.tzinfo is None:
@@ -217,7 +220,9 @@ def predict_token(db: Session, token: models.Token, now: datetime | None = None)
     extra_delay = get_extra_delay_minutes(db, now) if token.status in ("waiting", "called") else 0
     estimated_wait = (people_ahead / active_counters) * service_duration + extra_delay
     estimated_service_time = now + timedelta(minutes=estimated_wait)
-    recommended_arrival_time = estimated_service_time - timedelta(minutes=15)
+    # Recommend arriving ARRIVAL_BUFFER minutes early, but never a time in the
+    # past — if the turn is sooner than the buffer, the right advice is "now".
+    recommended_arrival_time = max(estimated_service_time - timedelta(minutes=ARRIVAL_BUFFER), now)
     return people_ahead, estimated_service_time, recommended_arrival_time
 
 
