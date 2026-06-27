@@ -290,6 +290,10 @@ button { font-family: inherit; cursor: pointer; }
 .prediction-why li::before { content: ""; position: absolute; left: 0; top: 0.52rem; width: 6px; height: 6px; border-radius: 50%; background: var(--predict); }
 .citizen-why { margin-bottom: var(--s4); box-shadow: var(--shadow-sm); }
 
+/* ML model badge (admin prediction engine) */
+.model-badge { display: inline-flex; align-items: center; gap: 0.35rem; flex-shrink: 0; font-family: var(--mono); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; color: var(--predict-strong); background: var(--predict-soft); border: 1px solid var(--predict-line); border-radius: 999px; padding: 0.22rem 0.55rem; }
+.model-badge svg { color: var(--predict); }
+
 /* No-show risk chip (admin counter "called" state) */
 .risk-chip { display: inline-flex; align-items: center; gap: 0.35rem; align-self: flex-start; margin-top: 0.3rem; font-family: var(--mono); font-size: 0.72rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
 .risk-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }

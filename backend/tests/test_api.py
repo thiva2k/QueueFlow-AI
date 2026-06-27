@@ -602,6 +602,73 @@ def test_called_token_carries_no_show_risk(tmp_path):
     assert 0 <= called_read["no_show_risk"] <= 100
 
 
+def test_service_time_model_trains_and_varies_by_hour():
+    from app.services import ml
+
+    info = ml.model_info()
+    assert info["trained"] is True
+    assert info["samples"] > 0
+    assert set(info["importances"]) == {"time_of_day", "service_length", "queue_load"}
+
+    # The mid-morning rush should predict a longer service than early afternoon.
+    morning = ml.predict_duration(8, 10, 5)
+    afternoon = ml.predict_duration(8, 13, 5)
+    assert morning is not None and afternoon is not None
+    assert morning > afternoon
+
+
+def test_model_info_endpoint_declares_synthetic_provenance(tmp_path):
+    client = make_client(tmp_path)
+    info = client.get("/model/info").json()
+    assert info["trained"] is True
+    assert info["samples"] > 0
+    assert "importances" in info
+    # Must be self-documenting that the training data is synthetic.
+    assert info["data_source"] == "synthetic"
+
+
+def test_model_predictions_are_deterministic():
+    from app.services import ml
+
+    first = ml.predict_duration(8, 10, 5)
+    second = ml.predict_duration(8, 10, 5)
+    assert first is not None
+    assert first == second
+
+
+def test_model_degrades_gracefully_when_sklearn_unavailable(monkeypatch):
+    """If scikit-learn can't be imported (or OOMs), every layer falls back cleanly."""
+    import builtins
+
+    from app.services import ml
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name.startswith("sklearn"):
+            raise ImportError("simulated: scikit-learn unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(ml, "_model", None)
+    monkeypatch.setattr(
+        ml, "_meta", {"trained": False, "samples": 0, "importances": {}, "available": True, "data_source": "synthetic"}
+    )
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert ml.predict_duration(8, 10, 5) is None
+    info = ml.model_info()
+    assert info["available"] is False
+    assert info["trained"] is False
+
+
+def test_cold_start_prediction_uses_the_model(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)  # fresh queue → no completed history yet
+    waiting_id = client.get("/tokens/by-number/A-010").json()["id"]
+    pred = client.get(f"/tokens/{waiting_id}/prediction").json()
+    assert any("model" in factor.lower() for factor in pred["factors"])
+
+
 def test_staff_endpoints_require_api_key_when_configured(tmp_path):
     client = make_client(tmp_path)
     seed_demo(client)
