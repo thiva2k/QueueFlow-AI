@@ -3,11 +3,13 @@ import AdminDashboard from "./pages/AdminDashboard.jsx";
 import CitizenBooking from "./pages/CitizenBooking.jsx";
 import CitizenTokenStatus from "./pages/CitizenTokenStatus.jsx";
 import PublicDisplay from "./pages/PublicDisplay.jsx";
+import TokenLookup from "./pages/TokenLookup.jsx";
 
 function getRoute() {
   const path = window.location.pathname;
   if (path === "/admin") return { name: "admin" };
   if (path === "/display") return { name: "display" };
+  if (path === "/track" || path === "/status") return { name: "track" };
   if (path === "/book" || path === "/") return { name: "book" };
   const tokenMatch = path.match(/^\/token\/([^/]+)$/);
   if (tokenMatch) return { name: "token", tokenNumber: decodeURIComponent(tokenMatch[1]) };
@@ -29,6 +31,13 @@ function AppNav({ route, onNavigate }) {
       <div className="nav-links">
         <a href="/book" className={route.name === "book" ? "active" : ""} onClick={(event) => handleClick(event, "/book")}>
           Book Token
+        </a>
+        <a
+          href="/track"
+          className={route.name === "track" || route.name === "token" ? "active" : ""}
+          onClick={(event) => handleClick(event, "/track")}
+        >
+          Check Status
         </a>
         <a href="/admin" className={route.name === "admin" ? "active" : ""} onClick={(event) => handleClick(event, "/admin")}>
           Admin Dashboard
@@ -62,6 +71,7 @@ export default function App() {
   let page = <CitizenBooking onNavigate={navigate} />;
   if (route.name === "admin") page = <AdminDashboard />;
   if (route.name === "display") page = <PublicDisplay />;
+  if (route.name === "track") page = <TokenLookup onNavigate={navigate} />;
   if (route.name === "token") page = <CitizenTokenStatus tokenNumber={route.tokenNumber} />;
 
   return (

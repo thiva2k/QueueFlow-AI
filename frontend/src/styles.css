@@ -403,6 +403,25 @@ tbody tr:hover { background: var(--surface-2); }
 .explanation-panel p { font-size: 0.84rem; color: var(--ink-2); }
 
 /* ============================================================================
+   CITIZEN — token lookup ("Check Status")
+   ========================================================================== */
+.lookup-wrap { display: grid; place-items: center; min-height: 62vh; padding: var(--s6) 0; }
+.lookup-card { width: 100%; max-width: 540px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s6); box-shadow: var(--shadow-sm); }
+.lookup-mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--predict-soft); color: var(--predict-strong); border: 1px solid var(--predict-line); margin-bottom: var(--s4); }
+.lookup-card h1 { font-size: 1.65rem; }
+.lookup-card .hero-copy { margin-top: 0.5rem; font-size: 0.95rem; }
+.lookup-form { margin-top: var(--s5); }
+.lookup-input-row { display: flex; gap: var(--s2); }
+.lookup-input-row input { flex: 1; min-width: 0; font-family: var(--mono); text-transform: uppercase; font-size: 1rem; padding: 0.62rem 0.7rem; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.lookup-input-row input:focus { outline: none; border-color: var(--predict); box-shadow: var(--ring); }
+.lookup-input-row input[aria-invalid="true"] { border-color: var(--red-line); }
+.lookup-input-row .action-button { padding: 0.62rem 1rem; }
+.lookup-secondary { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: var(--s3); background: none; border: none; color: var(--predict-strong); font-weight: 600; font-size: 0.9rem; padding: 0; }
+.lookup-secondary:hover { color: var(--predict); }
+.booking-lookup-link { width: 100%; justify-content: center; margin-top: var(--s4); }
+@media (max-width: 480px) { .lookup-input-row { flex-direction: column; } .lookup-input-row .action-button { justify-content: center; } }
+
+/* ============================================================================
    CITIZEN — token status (live status card)
    ========================================================================== */
 .guidance-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); padding: var(--s5); border-radius: var(--r-lg); margin-bottom: var(--s4); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm); }

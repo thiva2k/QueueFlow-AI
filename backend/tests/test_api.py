@@ -1,7 +1,7 @@
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -540,6 +540,23 @@ def test_service_time_learns_from_recent_completions(tmp_path):
     learned = client.get(f"/tokens/{waiting_id}/prediction").json()
     assert learned["average_service_minutes"] > baseline
     assert any("learned from" in factor.lower() for factor in learned["factors"])
+
+
+def test_recommended_arrival_is_never_in_the_past(tmp_path):
+    """A short wait must not push the recommended arrival before now."""
+    client = make_client(tmp_path)
+    seed_demo(client)
+    # The very first waiting token has ~0 people ahead, so the naive
+    # "service time minus 15 min buffer" would land 15 minutes in the past.
+    token_id = client.get("/tokens/by-number/A-001").json()["id"]
+    pred = client.get(f"/tokens/{token_id}/prediction").json()
+
+    arrival = parse_iso(pred["recommended_arrival_time"])
+    estimated = parse_iso(pred["estimated_service_time"])
+    now = datetime.now(timezone.utc)
+    assert arrival >= now - timedelta(seconds=5)
+    # And it never sits after the time you'd actually be served.
+    assert arrival <= estimated + timedelta(seconds=5)
 
 
 def test_prediction_has_no_confidence_band_without_history(tmp_path):
