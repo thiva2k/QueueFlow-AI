@@ -170,6 +170,99 @@ def miss_token(counter_id: int, token_id: int, db: Session = Depends(get_db)):
     return token
 
 
+@router.get("/analytics")
+def get_analytics(
+    days: int = Query(default=7, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """Staff analytics over the last ``days`` of created tokens.
+
+    Everything tolerates an empty database: aggregates fall back to zeros/nulls
+    and grouped lists come back empty rather than erroring.
+    """
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+
+    def aware(value: datetime) -> datetime:
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+    # Filter in Python on tz-aware timestamps so SQLite's timezone handling can
+    # never silently drop rows from the window.
+    tokens = [t for t in db.query(models.Token).all() if aware(t.created_at) >= since]
+
+    completed = [t for t in tokens if t.status == "completed"]
+    missed = [t for t in tokens if t.status == "missed"]
+    cancelled = [t for t in tokens if t.status == "cancelled"]
+
+    def avg(values: list[float]) -> float:
+        return round(sum(values) / len(values), 1) if values else 0.0
+
+    waits = [
+        (aware(t.started_at) - aware(t.created_at)).total_seconds() / 60
+        for t in tokens
+        if t.started_at is not None
+    ]
+    service_minutes = [t.actual_duration_minutes for t in completed if t.actual_duration_minutes is not None]
+
+    # No-show rate deliberately excludes cancelled tokens (voluntary self-cancel
+    # is not a no-show).
+    no_show_denom = len(completed) + len(missed)
+    totals = {
+        "completed": len(completed),
+        "missed": len(missed),
+        "cancelled": len(cancelled),
+        "avg_wait_minutes": avg(waits),
+        "avg_service_minutes": avg(service_minutes),
+        "no_show_rate": round(len(missed) / no_show_denom, 3) if no_show_denom else 0.0,
+    }
+
+    hourly = []
+    for hour in range(24):
+        in_hour = [t for t in tokens if aware(t.created_at).hour == hour]
+        hour_waits = [
+            (aware(t.started_at) - aware(t.created_at)).total_seconds() / 60
+            for t in in_hour
+            if t.started_at is not None
+        ]
+        hourly.append(
+            {
+                "hour": hour,
+                "tokens_created": len(in_hour),
+                "avg_wait_minutes": avg(hour_waits),
+            }
+        )
+
+    services_rows = []
+    for service in db.query(models.Service).order_by(models.Service.id).all():
+        svc_tokens = [t for t in tokens if t.service_id == service.id]
+        svc_completed = [t for t in svc_tokens if t.status == "completed"]
+        svc_durations = [t.actual_duration_minutes for t in svc_completed if t.actual_duration_minutes is not None]
+        services_rows.append(
+            {
+                "service_id": service.id,
+                "name": service.name,
+                "completed": len(svc_completed),
+                "missed": len([t for t in svc_tokens if t.status == "missed"]),
+                "avg_duration_minutes": avg(svc_durations),
+            }
+        )
+
+    day_map: dict[str, dict] = {}
+    for t in tokens:
+        key = aware(t.created_at).date().isoformat()
+        bucket = day_map.setdefault(key, {"date": key, "completed": 0, "missed": 0, "cancelled": 0})
+        if t.status in {"completed", "missed", "cancelled"}:
+            bucket[t.status] += 1
+    days_rows = [day_map[key] for key in sorted(day_map)]
+
+    return {
+        "totals": totals,
+        "hourly": hourly,
+        "services": services_rows,
+        "days": days_rows,
+    }
+
+
 @router.post("/recalculate-predictions", response_model=schemas.Message)
 def recalculate(db: Session = Depends(get_db)):
     recalculate_predictions(db)

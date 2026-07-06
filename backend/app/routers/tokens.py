@@ -11,6 +11,7 @@ from app.services.prediction import (
     count_people_ahead,
     explain_prediction,
     get_average_service_duration,
+    get_counter_delays,
     no_show_risk,
     predict_token,
     recalculate_predictions,
@@ -79,10 +80,33 @@ def get_token_by_number(token_number: str, db: Session = Depends(get_db)):
     return token_to_read(db, token)
 
 
+@router.post("/tokens/{token_id}/cancel", response_model=schemas.TokenRead)
+def cancel_token(token_id: int, db: Session = Depends(get_db)):
+    """Citizen self-service cancellation (ungated).
+
+    Only a token that is still waiting or has just been called can be cancelled.
+    We set status='cancelled' and deliberately leave counter assignments
+    untouched — a cancelled token simply stops being 'open', so staff can call
+    the next citizen normally. Predictions are recalculated as with a miss.
+    """
+    token = get_token_or_404(db, token_id)
+    if token.status not in {"waiting", "called"}:
+        raise HTTPException(
+            status_code=409,
+            detail="This token can no longer be cancelled",
+        )
+
+    token.status = "cancelled"
+    db.commit()
+    recalculate_predictions(db)
+    db.refresh(token)
+    return token_to_read(db, token)
+
+
 @router.get("/tokens/{token_id}/prediction", response_model=schemas.PredictionRead)
 def get_token_prediction(token_id: int, db: Session = Depends(get_db)):
     token = get_token_or_404(db, token_id)
-    if token.status in {"completed", "missed"}:
+    if token.status in {"completed", "missed", "cancelled"}:
         raise HTTPException(status_code=400, detail="Cannot predict a closed token")
     people_ahead, estimated_service_time, recommended_arrival_time = predict_token(db, token)
     explanation = explain_prediction(db, token)
@@ -147,4 +171,49 @@ def get_queue_status(db: Session = Depends(get_db)):
         average_service_duration=get_average_service_duration(db),
         average_wait_minutes=average_wait,
         estimated_wait_for_last_token=estimated_wait,
+    )
+
+
+@router.get("/queue/sla", response_model=schemas.SlaSummary)
+def get_queue_sla(db: Session = Depends(get_db)):
+    """Service-level snapshot: what share of recent visits finished on time.
+
+    On-time = actual duration within 1.15x the service's default duration.
+    Measured over the last 50 completed tokens.
+    """
+    completed = (
+        db.query(models.Token)
+        .filter(
+            models.Token.status == "completed",
+            models.Token.actual_duration_minutes.isnot(None),
+        )
+        .order_by(models.Token.completed_at.desc())
+        .limit(50)
+        .all()
+    )
+    sample_size = len(completed)
+
+    on_time = 0
+    for token in completed:
+        default = token.service.default_duration_minutes if token.service else 0
+        if token.actual_duration_minutes <= default * 1.15:
+            on_time += 1
+
+    on_time_percent = round(on_time / sample_size * 100, 1) if sample_size else None
+    counters_behind = [name for name, _ in get_counter_delays(db)]
+
+    if sample_size == 0:
+        sla_status = "unknown"
+    elif on_time_percent >= 90:
+        sla_status = "good"
+    elif on_time_percent >= 75:
+        sla_status = "warn"
+    else:
+        sla_status = "behind"
+
+    return schemas.SlaSummary(
+        on_time_percent=on_time_percent,
+        sample_size=sample_size,
+        counters_behind=counters_behind,
+        status=sla_status,
     )

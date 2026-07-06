@@ -234,7 +234,9 @@ def test_simulate_delay_accepts_extra_minutes(tmp_path):
 
     assert after_five["estimated_service_time"] > before["estimated_service_time"]
     delay_gap = parse_iso(after_ten["estimated_service_time"]) - parse_iso(after_five["estimated_service_time"])
-    assert delay_gap.total_seconds() >= 4 * 60
+    # The extra 5 minutes of overrun is attributed across the 3 active counters,
+    # so the gap is the scaled ~5/3 min rather than the full 5 min.
+    assert delay_gap.total_seconds() >= 60
 
 
 def test_simulate_delay_rejects_non_serving_and_invalid_minutes(tmp_path):
@@ -449,7 +451,7 @@ def test_create_counter_rejects_invalid_status(tmp_path):
 
 # --- Prediction edge cases -------------------------------------------------
 
-def test_prediction_with_all_counters_paused_does_not_crash(tmp_path):
+def test_prediction_with_all_counters_paused_returns_paused_state(tmp_path):
     client = make_client(tmp_path)
     seed_demo(client)
     for counter in client.get("/counters").json():
@@ -458,7 +460,17 @@ def test_prediction_with_all_counters_paused_does_not_crash(tmp_path):
     token_id = client.get("/tokens/by-number/A-010").json()["id"]
     prediction = client.get(f"/tokens/{token_id}/prediction")
     assert prediction.status_code == 200
-    assert prediction.json()["estimated_service_time"] is not None
+    body = prediction.json()
+    # Zero active counters → no throughput to estimate, ETAs come back null so
+    # the UI can render the paused state.
+    assert body["estimated_service_time"] is None
+    assert body["recommended_arrival_time"] is None
+    assert body["active_counters"] == 0
+
+    # The stored token also reflects the paused (null) estimate.
+    token = client.get("/tokens/by-number/A-010").json()
+    assert token["estimated_service_time"] is None
+    assert token["recommended_arrival_time"] is None
 
     status = client.get("/queue/status")
     assert status.status_code == 200
@@ -699,3 +711,198 @@ def test_staff_endpoints_require_api_key_when_configured(tmp_path):
         assert wrong.status_code == 401
     finally:
         os.environ.pop("STAFF_API_KEY", None)
+
+
+# --- Cancellation ----------------------------------------------------------
+
+def test_citizen_can_cancel_a_waiting_token(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    token_id = client.get("/tokens/by-number/A-020").json()["id"]
+
+    response = client.post(f"/tokens/{token_id}/cancel")
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+
+    # A cancelled token is no longer part of the live queue.
+    queue = client.get("/queue/status").json()
+    assert all(t["id"] != token_id for t in queue["waiting"])
+    assert all(t["id"] != token_id for t in queue["called"])
+
+    # And it can no longer receive a live prediction.
+    pred = client.get(f"/tokens/{token_id}/prediction")
+    assert pred.status_code == 400
+
+
+def test_cancel_unknown_token_returns_404(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    assert client.post("/tokens/999999/cancel").status_code == 404
+
+
+def test_cancel_rejects_serving_and_closed_tokens_with_409(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+    started = client.post(f"/admin/start-token/{counter['id']}/{called['id']}").json()
+    assert started["status"] == "serving"
+
+    # Serving tokens cannot be cancelled by the citizen.
+    serving_cancel = client.post(f"/tokens/{called['id']}/cancel")
+    assert serving_cancel.status_code == 409
+
+    # Completed tokens likewise.
+    client.post(f"/admin/complete-token/{counter['id']}/{called['id']}")
+    completed_cancel = client.post(f"/tokens/{called['id']}/cancel")
+    assert completed_cancel.status_code == 409
+
+
+def test_cancelled_tokens_do_not_inflate_no_show_rate(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+
+    # One completed visit.
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+    client.post(f"/admin/start-token/{counter['id']}/{called['id']}")
+    client.post(f"/admin/complete-token/{counter['id']}/{called['id']}")
+
+    # One genuine no-show.
+    missed = client.post(f"/admin/call-next/{counter['id']}").json()
+    client.post(f"/admin/miss-token/{counter['id']}/{missed['id']}")
+
+    # Several voluntary cancellations that must NOT count as no-shows.
+    for number in ("A-018", "A-019", "A-020"):
+        cid = client.get(f"/tokens/by-number/{number}").json()["id"]
+        assert client.post(f"/tokens/{cid}/cancel").status_code == 200
+
+    analytics = client.get("/admin/analytics").json()
+    # 1 missed of (1 completed + 1 missed) = 0.5, independent of the 3 cancels.
+    assert analytics["totals"]["no_show_rate"] == 0.5
+    assert analytics["totals"]["cancelled"] == 3
+
+
+# --- SLA -------------------------------------------------------------------
+
+def test_sla_reports_unknown_status_before_any_completions(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+
+    sla = client.get("/queue/sla")
+    assert sla.status_code == 200
+    body = sla.json()
+    assert set(body) == {"on_time_percent", "sample_size", "counters_behind", "status"}
+    assert body["sample_size"] == 0
+    assert body["on_time_percent"] is None
+    assert body["status"] == "unknown"
+    assert body["counters_behind"] == []
+
+
+def test_sla_flags_a_counter_running_behind(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+    client.post(f"/admin/start-token/{counter['id']}/{called['id']}")
+    client.post(f"/admin/demo/simulate-delay/{called['id']}?extra_minutes=20")
+
+    body = client.get("/queue/sla").json()
+    assert counter["name"] in body["counters_behind"]
+
+
+# --- Analytics -------------------------------------------------------------
+
+def test_analytics_shape_and_totals(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counter = client.get("/counters").json()[0]
+
+    called = client.post(f"/admin/call-next/{counter['id']}").json()
+    client.post(f"/admin/start-token/{counter['id']}/{called['id']}")
+    client.post(f"/admin/complete-token/{counter['id']}/{called['id']}")
+
+    body = client.get("/admin/analytics?days=7").json()
+    assert set(body) == {"totals", "hourly", "services", "days"}
+
+    totals = body["totals"]
+    assert set(totals) == {
+        "completed",
+        "missed",
+        "cancelled",
+        "avg_wait_minutes",
+        "avg_service_minutes",
+        "no_show_rate",
+    }
+    assert totals["completed"] == 1
+
+    assert len(body["hourly"]) == 24
+    assert all(set(row) == {"hour", "tokens_created", "avg_wait_minutes"} for row in body["hourly"])
+    assert len(body["services"]) == 3
+    assert all(
+        set(row) == {"service_id", "name", "completed", "missed", "avg_duration_minutes"}
+        for row in body["services"]
+    )
+    assert all(set(row) == {"date", "completed", "missed", "cancelled"} for row in body["days"])
+
+
+def test_analytics_tolerates_empty_database(tmp_path):
+    client = make_client(tmp_path)
+    body = client.get("/admin/analytics").json()
+    assert body["totals"]["completed"] == 0
+    assert body["totals"]["no_show_rate"] == 0.0
+    assert body["services"] == []
+    assert body["days"] == []
+    assert len(body["hourly"]) == 24
+
+
+def test_analytics_is_staff_gated(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+
+    os.environ["STAFF_API_KEY"] = "s3cret-demo-key"
+    try:
+        assert client.get("/admin/analytics").status_code == 401
+        ok = client.get("/admin/analytics", headers={"X-API-Key": "s3cret-demo-key"})
+        assert ok.status_code == 200
+    finally:
+        os.environ.pop("STAFF_API_KEY", None)
+
+
+# --- Delay attribution -----------------------------------------------------
+
+def test_delay_is_scaled_per_counter_not_summed(tmp_path):
+    """Two counters each running 20 min over must add ~overrun/active_counters to
+    a waiting token's ETA — attributed per counter, never summed across them."""
+    client = make_client(tmp_path)
+    seed_demo(client)
+    counters = client.get("/counters").json()
+    active = [c for c in counters if c["status"] == "active"]
+
+    # Reduce to exactly two active counters so the arithmetic is unambiguous.
+    for extra in active[2:]:
+        client.patch(f"/counters/{extra['id']}/pause")
+    c1, c2 = active[0], active[1]
+    assert client.get("/queue/status").json()["active_counters"] == 2
+
+    # Put a serving token on each of the two active counters (no delay yet).
+    first = client.post(f"/admin/call-next/{c1['id']}").json()
+    client.post(f"/admin/start-token/{c1['id']}/{first['id']}")
+    second = client.post(f"/admin/call-next/{c2['id']}").json()
+    client.post(f"/admin/start-token/{c2['id']}/{second['id']}")
+
+    waiting_id = client.get("/tokens/by-number/A-020").json()["id"]
+    before = parse_iso(client.get(f"/tokens/{waiting_id}/prediction").json()["estimated_service_time"])
+
+    # Each counter now runs 20 minutes over expected: aggregate overrun = 40.
+    client.post(f"/admin/demo/simulate-delay/{first['id']}?extra_minutes=20")
+    client.post(f"/admin/demo/simulate-delay/{second['id']}?extra_minutes=20")
+
+    after = parse_iso(client.get(f"/tokens/{waiting_id}/prediction").json()["estimated_service_time"])
+    delta_minutes = (after - before).total_seconds() / 60
+
+    # Aggregate overrun is 40 min across 2 active counters → ~20 min added.
+    # The old summed behaviour would have added the full 40.
+    assert 17 <= delta_minutes <= 23
+    assert delta_minutes < 35  # proves it is scaled, not summed

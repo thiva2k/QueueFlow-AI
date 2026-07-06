@@ -1,0 +1,40 @@
+/* ============================================================================
+   /book — CitizenBooking ("Night Terminal" v4)
+   Tailwind-first: the page layout, hero bento, hall monitor, form and ticket
+   are built entirely from Tailwind utilities + the civic-document utilities in
+   styles/tailwind.css (qf-bento / qf-perf / qf-mrz / qf-stamp / qf-ticks).
+
+   This file is now ONLY the boarding-pass ticket's print contract. The global
+   .qf-ticket / [data-testid="booking-result"] visibility + reposition rule
+   lives in styles.css; here we drop interactive chrome and keep the
+   machine-readable strip and perforation legible on paper.
+   ========================================================================== */
+
+@media print {
+  /* Interactive controls (buttons, share input row) never print. Tailwind's
+     print:hidden covers the same elements; this is the CSS-side guarantee. */
+  .qf-ticket .qf-ticket__noprint {
+    display: none !important;
+  }
+
+  /* MRZ strip: force ink-black and keep it fully opaque on paper. */
+  .qf-ticket .qf-mrz {
+    color: #000 !important;
+    opacity: 1 !important;
+  }
+
+  /* Perforation tear-line: the global rule blanks background shorthands to
+     transparent, so restore the punched-dot pattern as ink on paper. */
+  .qf-ticket .qf-perf {
+    background-image: radial-gradient(circle, #000 1.2px, transparent 1.4px) !important;
+    background-size: 12px 100% !important;
+    background-repeat: repeat-x !important;
+    background-position: center !important;
+  }
+
+  /* Registration seal reads as an ink stamp on paper. */
+  .qf-ticket .qf-stamp {
+    color: #000 !important;
+    opacity: 1 !important;
+  }
+}

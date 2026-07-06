@@ -1,0 +1,971 @@
+/* ============================================================================
+   QueueFlow AI — "NIGHT TERMINAL" (v3)
+   /token/:n (CitizenTokenStatus) + /track (TokenLookup) — page-owned styles.
+   Global tokens/components/keyframes live in styles.css (foundation).
+   Two temperatures of light: cyan = live signal, sodium amber = the call.
+   The token hero + Arrival Rail are the signatures; everything else stays quiet.
+   ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+   Page shell
+   -------------------------------------------------------------------------- */
+.status-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.status-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+/* ----------------------------------------------------------------------------
+   Token hero — the primary panel (holo ring + FlowField behind content).
+   Called / serving flips the whole panel to the amber "your turn" temperature.
+   -------------------------------------------------------------------------- */
+.status-hero {
+  position: relative;
+  overflow: hidden;
+  padding: var(--s6) var(--s6) var(--s5);
+}
+/* FlowField canvas sits behind the content, clipped to the panel radius. */
+.status-hero .qf-flow {
+  z-index: 0;
+  opacity: 0.7;
+}
+.status-hero__inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s5);
+  flex-wrap: wrap;
+}
+.status-hero__id-block {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.status-hero__id-block .qf-eyebrow {
+  margin: 0;
+}
+.status-hero__id-block .qf-flap {
+  max-width: 100%;
+  flex-wrap: nowrap;
+}
+.status-hero__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-top: var(--s2);
+}
+.status-hero__actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+/* Amber temperature switch — border stays amber, calledFlash pulses the ring.
+   Base glow is the reduced-motion fallback when the animation is nuked. */
+.status-hero--called {
+  border-color: color-mix(in srgb, var(--amber) 46%, transparent);
+  box-shadow: var(--glow-amber), var(--shadow);
+  animation: calledFlash 2.6s ease-in-out infinite;
+}
+
+/* Go-to-counter call-out — the sodium-amber instruction. */
+.status-call {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s5);
+  padding: var(--s4);
+  border-radius: var(--r);
+  font-size: var(--fz-15);
+  font-weight: 600;
+  color: var(--amber);
+  background: var(--amber-soft);
+  border: 1px solid color-mix(in srgb, var(--amber) 34%, transparent);
+}
+.status-call svg {
+  flex-shrink: 0;
+  color: var(--amber);
+}
+
+/* ----------------------------------------------------------------------------
+   Notify toggle
+   -------------------------------------------------------------------------- */
+.status-notify {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--r-sm);
+  font-size: var(--fz-13);
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border: 1px solid var(--line-strong);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.status-notify:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+.status-notify.is-on {
+  background: var(--live-soft);
+  color: var(--live);
+  border-color: color-mix(in srgb, var(--live) 35%, transparent);
+}
+.status-notify.is-on svg {
+  color: var(--live);
+}
+.status-notify:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ----------------------------------------------------------------------------
+   Delta pill — prediction moved (warn), auto-dismisses
+   -------------------------------------------------------------------------- */
+.status-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--r-pill);
+  font-size: var(--fz-13);
+  font-weight: 600;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+}
+.status-delta svg {
+  color: var(--warn);
+  flex-shrink: 0;
+}
+
+/* ----------------------------------------------------------------------------
+   Arrival Rail (signature) — glowing cyan track, amber arrival marker,
+   breathing "you are here" position.
+   -------------------------------------------------------------------------- */
+.rail-card {
+  padding: var(--s6) var(--s5) var(--s5);
+  background:
+    radial-gradient(120% 140% at 0% 0%, var(--live-soft), transparent 55%),
+    var(--glass);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.rail-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s6);
+}
+.rail-card__title {
+  font-family: var(--mono);
+  font-size: var(--fz-12);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--live);
+}
+.rail-card__hint {
+  font-size: var(--fz-13);
+  color: var(--ink-3);
+}
+
+.rail {
+  position: relative;
+  height: 96px;
+  /* top margin gives the above-track Arrive-by label room at every width */
+  margin: var(--s4) 6px 0;
+}
+/* Base track + progress fill (fill uses scaleX — GPU-friendly, no layout thrash) */
+.rail__track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 34px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+  overflow: hidden;
+}
+.rail__fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--live-deep), var(--live));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--live) 60%, transparent);
+  transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Endpoint + arrival markers (framer animates `left` along the proportional
+   rail — a deliberate deviation from the transform-only rule, since a marker's
+   position is a fraction of a variable-width parent, which transform-percent
+   can't express. Reduced motion snaps it instantly.) */
+.rail__marker {
+  position: absolute;
+  top: 34px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 0;
+  z-index: 2;
+}
+.rail__marker-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+}
+.rail__marker--booked .rail__marker-dot {
+  border-color: var(--live);
+  background: var(--live);
+}
+/* Amber arrival marker — the "be here" moment reads as the call temperature. */
+.rail__marker--arrival .rail__marker-dot {
+  border-color: var(--amber);
+  background: var(--surface);
+  box-shadow: 0 0 0 4px var(--amber-soft), 0 0 14px color-mix(in srgb, var(--amber) 55%, transparent);
+}
+.rail__marker--turn .rail__marker-dot {
+  border-color: var(--live);
+  background: var(--surface);
+  box-shadow: var(--glow-live);
+}
+.rail__marker-label {
+  position: absolute;
+  top: 16px;
+  white-space: nowrap;
+  font-size: var(--fz-12);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.rail__marker-time {
+  position: absolute;
+  top: 34px;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fz-13);
+  font-weight: 600;
+  color: var(--ink);
+}
+.rail__marker--arrival .rail__marker-label,
+.rail__marker--arrival .rail__marker-time {
+  color: var(--amber);
+}
+/* The Arrive-by and Your-turn markers can land minutes apart at any width —
+   the arrival label always lives ABOVE the track so the two never collide. */
+.rail__marker--arrival .rail__marker-label {
+  top: auto;
+  bottom: 26px;
+}
+.rail__marker--arrival .rail__marker-time {
+  top: auto;
+  bottom: 8px;
+}
+.rail__marker--turn .rail__marker-time {
+  color: var(--live);
+}
+/* keep the flanking labels from clipping off the edges */
+.rail__marker--booked {
+  align-items: flex-start;
+}
+.rail__marker--booked .rail__marker-label,
+.rail__marker--booked .rail__marker-time {
+  left: -4px;
+  transform: none;
+}
+.rail__marker--turn {
+  align-items: flex-end;
+}
+.rail__marker--turn .rail__marker-label,
+.rail__marker--turn .rail__marker-time {
+  right: -4px;
+}
+
+/* People-ahead dots — sit between your position and arrival; slide on change */
+.rail__ahead-dot {
+  position: absolute;
+  top: 34px;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  box-shadow: 0 0 0 2px var(--surface);
+  z-index: 1;
+}
+
+/* Your breathing position marker */
+.rail__pos {
+  position: absolute;
+  top: 34px;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.rail__pos-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 0 3px var(--live-soft), var(--glow-live);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+.rail__pos-badge {
+  position: absolute;
+  bottom: 20px;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: var(--fz-12);
+  font-weight: 600;
+  color: var(--live);
+  background: var(--live-soft);
+  border: 1px solid color-mix(in srgb, var(--live) 32%, transparent);
+  border-radius: var(--r-pill);
+  padding: 0.1rem 0.5rem;
+}
+
+/* ----------------------------------------------------------------------------
+   Countdown card + SVG ring
+   -------------------------------------------------------------------------- */
+.countdown {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  flex-wrap: wrap;
+  padding: var(--s5);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-sm);
+}
+.countdown--soon {
+  border-color: color-mix(in srgb, var(--live) 30%, transparent);
+}
+.countdown--now {
+  border-color: color-mix(in srgb, var(--amber) 36%, transparent);
+  background: var(--amber-soft);
+  box-shadow: var(--glow-amber);
+}
+.countdown__lead {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.countdown__label {
+  font-size: var(--fz-13);
+  color: var(--ink-2);
+}
+.countdown__arrive {
+  font-family: var(--display);
+  font-size: var(--fz-22);
+  font-weight: 600;
+  color: var(--ink);
+}
+.countdown__arrive .mono {
+  color: var(--live);
+}
+.countdown--now .countdown__arrive .mono {
+  color: var(--amber);
+}
+.countdown__sub {
+  font-size: var(--fz-13);
+  color: var(--ink-3);
+}
+
+/* Ring */
+.cring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+.cring__svg {
+  transform: rotate(-90deg); /* start the arc at 12 o'clock */
+}
+.cring__track {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 5;
+}
+.cring__prog {
+  fill: none;
+  stroke: var(--live);
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s var(--ease-enter);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--live) 60%, transparent));
+}
+.cring--amber .cring__prog {
+  stroke: var(--amber);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--amber) 60%, transparent));
+}
+.cring__center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.cring__mins {
+  display: flex;
+  align-items: baseline;
+  gap: 0.08rem;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fz-16);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--live);
+}
+.cring__unit {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.cring__now {
+  font-family: var(--display);
+  font-size: var(--fz-15);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+/* ----------------------------------------------------------------------------
+   Paused-estimates banner
+   -------------------------------------------------------------------------- */
+.status-paused {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s5);
+  border-radius: var(--r-lg);
+  border: 1px dashed var(--line-strong);
+  background: var(--bg1);
+  color: var(--ink-2);
+}
+.status-paused svg {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+.status-paused strong {
+  display: block;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: var(--fz-18);
+}
+.status-paused p {
+  font-size: var(--fz-13);
+  color: var(--ink-3);
+  margin-top: 0.15rem;
+}
+
+/* ----------------------------------------------------------------------------
+   Journey rail (waiting -> called -> serving -> completed + missed/cancelled)
+   -------------------------------------------------------------------------- */
+.journey {
+  padding: var(--s5);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.journey__title {
+  font-family: var(--mono);
+  font-size: var(--fz-12);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--live);
+  margin-bottom: var(--s4);
+}
+.journey__rail {
+  display: flex;
+  align-items: stretch;
+}
+.journey__step {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 1.4rem;
+  min-width: 0;
+}
+.journey__step::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  right: -50%;
+  height: 2px;
+  background: var(--line-strong);
+}
+.journey__step:last-child::before {
+  display: none;
+}
+.journey__node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  z-index: 1;
+}
+.journey__step.is-done .journey__node {
+  border-color: var(--live);
+  background: var(--live);
+}
+.journey__step.is-done::before {
+  background: var(--live);
+}
+.journey__step.is-active .journey__node {
+  border-color: var(--live);
+  background: var(--live);
+  box-shadow: 0 0 0 4px var(--live-soft);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+.journey__step.is-active::before {
+  background: var(--live);
+}
+.journey__step.is-danger .journey__node {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.journey__step.is-neutral .journey__node {
+  border-color: var(--ink-3);
+  background: var(--ink-3);
+}
+.journey__label {
+  font-size: var(--fz-13);
+  font-weight: 600;
+  color: var(--ink);
+}
+.journey__step.is-active .journey__label {
+  color: var(--live);
+}
+.journey__step.is-danger .journey__label {
+  color: var(--danger);
+}
+.journey__step.is-neutral .journey__label {
+  color: var(--ink-2);
+}
+@media (max-width: 560px) {
+  .journey__rail {
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+  .journey__step {
+    padding-top: 0;
+    padding-left: 1.5rem;
+    min-height: 2.6rem;
+  }
+  .journey__step::before {
+    top: 14px;
+    bottom: -10px;
+    left: 6px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+  .journey__node {
+    top: 4px;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Detail grid, confidence, risk
+   -------------------------------------------------------------------------- */
+.status-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.status-details > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: var(--s4);
+  background: var(--surface);
+}
+.status-details dt {
+  font-size: var(--fz-12);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.status-details dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fz-18);
+  font-weight: 600;
+  color: var(--ink);
+}
+.status-details dd.is-accent {
+  color: var(--live);
+}
+
+.status-explain {
+  padding: var(--s5);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.status-explain__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-size: var(--fz-12);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--live);
+  margin-bottom: var(--s3);
+}
+.status-explain__conf {
+  font-family: var(--mono);
+  font-size: var(--fz-13);
+  color: var(--ink-2);
+  margin-bottom: var(--s3);
+}
+.status-explain__conf strong {
+  color: var(--predict);
+}
+.status-explain ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.status-explain li {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: var(--fz-15);
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.status-explain li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--predict);
+}
+
+.status-risk {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--r);
+  font-size: var(--fz-13);
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+.status-risk svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ----------------------------------------------------------------------------
+   Terminal state cards (completed / missed / cancelled)
+   -------------------------------------------------------------------------- */
+.status-terminal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--s3);
+  padding: var(--s7) var(--s5);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.status-terminal__icon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: var(--r-lg);
+  background: var(--live-soft);
+  color: var(--live);
+  border: 1px solid color-mix(in srgb, var(--live) 28%, transparent);
+}
+.status-terminal--ok .status-terminal__icon {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 28%, transparent);
+}
+.status-terminal--danger .status-terminal__icon {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+}
+.status-terminal--neutral .status-terminal__icon {
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border-color: var(--line-strong);
+}
+.status-terminal__token {
+  font-size: var(--fz-28);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.status-terminal h1 {
+  font-size: var(--fz-22);
+}
+.status-terminal p {
+  font-size: var(--fz-15);
+  color: var(--ink-2);
+  max-width: 46ch;
+}
+.status-terminal__actions {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: var(--s2);
+}
+
+/* ----------------------------------------------------------------------------
+   /token — narrow-screen refinements
+   -------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  .status-hero {
+    padding: var(--s5) var(--s4) var(--s4);
+  }
+  .status-hero__inner {
+    gap: var(--s4);
+  }
+  .status-hero__actions {
+    width: 100%;
+  }
+  /* On narrow rails the Arrive-by and Your-turn markers sit close together:
+     lift the arrival label/time ABOVE the track so the two never collide */
+  .rail {
+    height: 132px;
+    margin-top: var(--s4);
+  }
+  .rail__marker--arrival .rail__marker-label {
+    top: auto;
+    bottom: 26px;
+  }
+  .rail__marker--arrival .rail__marker-time {
+    top: auto;
+    bottom: 8px;
+  }
+}
+
+/* ============================================================================
+   /track — TokenLookup
+   ========================================================================== */
+.lookup-shell {
+  display: grid;
+  place-items: center;
+  min-height: 66vh;
+  padding: var(--s6) 0;
+}
+.lookup-card2 {
+  width: 100%;
+  max-width: 520px;
+  padding: var(--s7) var(--s6);
+}
+.lookup-card2__mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: var(--live-soft);
+  color: var(--live);
+  border: 1px solid color-mix(in srgb, var(--live) 28%, transparent);
+  margin-bottom: var(--s4);
+}
+.lookup-card2__title {
+  font-size: var(--display-2);
+}
+.lookup-card2__copy {
+  margin-top: 0.5rem;
+  font-size: var(--fz-15);
+  color: var(--ink-2);
+}
+.lookup-form2 {
+  margin-top: var(--s5);
+}
+.lookup-form2__label {
+  display: block;
+  font-size: var(--fz-13);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.4rem;
+}
+.lookup-form2__row {
+  display: flex;
+  gap: var(--s2);
+}
+.lookup-input2 {
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--fz-18);
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.lookup-input2::placeholder {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+.lookup-input2:focus {
+  outline: none;
+  border-color: var(--live);
+  box-shadow: var(--ring);
+}
+.lookup-input2[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+.lookup-form2__error {
+  min-height: 1.1rem;
+  margin: 0.4rem 0 0;
+  font-size: var(--fz-13);
+  color: var(--danger);
+}
+
+.lookup-recent {
+  margin-top: var(--s5);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line);
+}
+.lookup-recent__title {
+  font-family: var(--mono);
+  font-size: var(--fz-12);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s3);
+}
+.lookup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.lookup-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--r-pill);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fz-13);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.lookup-chip:hover {
+  background: var(--surface);
+  border-color: var(--live);
+  color: var(--live);
+  box-shadow: var(--glow-live);
+}
+.lookup-chip svg {
+  color: var(--ink-3);
+}
+.lookup-chip:hover svg {
+  color: var(--live);
+}
+
+.lookup-secondary2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: var(--s5);
+  background: none;
+  border: none;
+  color: var(--live);
+  font-weight: 600;
+  font-size: var(--fz-15);
+  padding: 0;
+  min-height: 44px;
+}
+.lookup-secondary2:hover {
+  color: var(--predict);
+}
+
+@media (max-width: 480px) {
+  .lookup-form2__row {
+    flex-direction: column;
+  }
+  .lookup-card2 {
+    padding: var(--s6) var(--s5);
+  }
+}

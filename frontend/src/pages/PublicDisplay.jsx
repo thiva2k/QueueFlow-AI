@@ -1,27 +1,64 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Clock3, Maximize2, MonitorUp, RefreshCcw, Ticket, Volume2 } from "lucide-react";
-import { API_BASE_URL, api } from "../api.js";
-import useVisiblePolling from "../useVisiblePolling.js";
+import {
+  AlertTriangle,
+  Clock3,
+  Maximize2,
+  Minimize2,
+  MonitorPlay,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import { api, describeError } from "../api.js";
+import useVisiblePolling, { useLatestRequest } from "../useVisiblePolling.js";
+import { StatusChip, EmptyState, Skeleton, SplitFlap } from "../components/index.js";
+import { BorderBeam, Marquee } from "../components/ui/index.js";
+import { LABELS, ICON } from "../constants.js";
+import "../styles/display.css";
 
 const POLL_INTERVAL_MS = 4000;
+const IDLE_HIDE_MS = 5000;
+const NEXT_UP_LIMIT = 6;
+const KIOSK_STORAGE_KEY = "qf_kiosk";
+const MUTE_STORAGE_KEY = "qf_display_muted";
 
-const TOKEN_STATUS_LABELS = {
-  called: "Called to Counter",
-  serving: "Being Served",
-  waiting: "Waiting",
-  paused: "Paused",
-};
+function readKioskPreference() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const param = params.get("kiosk");
+    if (param === "true") return true;
+    if (param === "false") return false;
+    return window.localStorage.getItem(KIOSK_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
-function formatTime(value) {
-  if (!value) return "Pending";
+function readMutePreference() {
+  // Sound is off by default (per spec) unless the operator has explicitly
+  // unmuted this device before.
+  try {
+    return window.localStorage.getItem(MUTE_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function formatClock(date) {
   return new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
+function formatTime(value) {
+  if (!value) return "--:--";
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 function formatMinutes(value) {
-  if (value == null) return "-";
+  if (value == null) return "--";
   return `${Math.round(value)} min`;
 }
 
@@ -29,267 +66,346 @@ function serviceName(servicesById, serviceId) {
   return servicesById.get(serviceId)?.name || "Service";
 }
 
-function buildTokenMap(queue) {
-  const tokens = [...(queue?.called || []), ...(queue?.now_serving || []), ...(queue?.waiting || [])];
-  return new Map(tokens.map((token) => [token.id, token]));
+function playSafeBeep() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const context = new AudioContext();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.frequency.value = 660;
+    gain.gain.value = 0.05;
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.14);
+  } catch {
+    // Browsers may block audio until the display has a user gesture. Silent
+    // no-op is fine here — the visual flash still communicates the change.
+  }
 }
 
-function DisplayStatus({ status }) {
-  return <span className={`status-badge status-${status || "unknown"}`}>{TOKEN_STATUS_LABELS[status] || status}</span>;
+/** Office status is derived from live counter data so it can never drift
+ * from what the counter cards actually show (audit fix: this used to be a
+ * hardcoded "Open and serving" string). */
+function deriveOfficeStatus(counters) {
+  if (!counters.length) return { label: "Closed", tone: "danger" };
+  if (counters.some((counter) => counter.status === "active")) {
+    return { label: "Open and serving", tone: "ok" };
+  }
+  return { label: "Temporarily paused", tone: "warn" };
 }
 
 export default function PublicDisplay() {
-  const kioskMode = new URLSearchParams(window.location.search).get("kiosk") === "true";
+  const [kiosk, setKiosk] = useState(readKioskPreference);
+  const [muted, setMuted] = useState(readMutePreference);
   const [queue, setQueue] = useState(null);
   const [services, setServices] = useState([]);
   const [counters, setCounters] = useState([]);
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState(() => new Date());
   const [lastUpdated, setLastUpdated] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [fullscreenMessage, setFullscreenMessage] = useState("");
-  const [highlightedIds, setHighlightedIds] = useState(new Set());
-  const previousActiveIds = useRef(null);
+  const [idle, setIdle] = useState(false);
+  const [fullscreenOn, setFullscreenOn] = useState(false);
+  const [flashIds, setFlashIds] = useState(() => new Set());
+
+  const previousActiveRef = useRef(null);
+  const idleTimerRef = useRef(null);
+  const { begin } = useLatestRequest();
 
   const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
-  const activeTokens = useMemo(() => [...(queue?.called || []), ...(queue?.now_serving || [])], [queue]);
-  const waitingTokens = useMemo(() => (queue?.waiting || []).slice(0, 8), [queue]);
-  const tokensById = useMemo(() => buildTokenMap(queue), [queue]);
+  const tokensById = useMemo(() => {
+    const tokens = [...(queue?.now_serving || []), ...(queue?.called || [])];
+    return new Map(tokens.map((token) => [token.id, token]));
+  }, [queue]);
+  const nextUp = useMemo(() => (queue?.waiting || []).slice(0, NEXT_UP_LIMIT), [queue]);
+  const officeStatus = useMemo(() => deriveOfficeStatus(counters), [counters]);
+  const estimatesPaused = (queue?.active_counters ?? 0) === 0;
 
   const loadDisplay = useCallback(async () => {
+    const reqId = begin();
+
     try {
-      const [queueData, serviceData, counterData] = await Promise.all([
-        api.getQueueStatus(),
-        api.getServices(),
-        api.getCounters(),
-      ]);
+      const queueData = await api.getQueueStatus();
+      if (!reqId.isCurrent()) return;
       setQueue(queueData);
-      setServices(serviceData);
-      setCounters(counterData);
-      setLastUpdated(new Date());
       setError("");
-    } catch (displayError) {
-      setError(displayError.message || "Could not load public display.");
+    } catch (loadError) {
+      if (!reqId.isCurrent()) return;
+      setError(describeError(loadError));
     } finally {
-      setLoading(false);
+      if (reqId.isCurrent()) setLoading(false);
     }
-  }, []);
+
+    const [serviceResult, counterResult] = await Promise.allSettled([api.getServices(), api.getCounters()]);
+    if (!reqId.isCurrent()) return;
+    if (serviceResult.status === "fulfilled") setServices(serviceResult.value);
+    if (counterResult.status === "fulfilled") setCounters(counterResult.value);
+    setLastUpdated(new Date());
+  }, [begin]);
 
   useEffect(() => {
     loadDisplay();
   }, [loadDisplay]);
+
+  useVisiblePolling(loadDisplay, POLL_INTERVAL_MS);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
-  useVisiblePolling(loadDisplay, POLL_INTERVAL_MS);
+  // Persist kiosk + mute preferences so a reloaded kiosk restores itself.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(KIOSK_STORAGE_KEY, kiosk ? "true" : "false");
+    } catch {
+      // Storage may be unavailable (private browsing) — kiosk still works
+      // for this session, it just won't survive a reload.
+    }
+  }, [kiosk]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(MUTE_STORAGE_KEY, muted ? "true" : "false");
+    } catch {
+      // Same as above — non-fatal.
+    }
+  }, [muted]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => setFullscreenOn(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  // Small unobtrusive corner affordance: visible on load / activity, fades
+  // out after 5s idle, reappears on any pointer/keyboard activity.
+  useEffect(() => {
+    const resetIdle = () => {
+      setIdle(false);
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = window.setTimeout(() => setIdle(true), IDLE_HIDE_MS);
+    };
+    resetIdle();
+    window.addEventListener("mousemove", resetIdle);
+    window.addEventListener("touchstart", resetIdle);
+    window.addEventListener("keydown", resetIdle);
+    return () => {
+      window.removeEventListener("mousemove", resetIdle);
+      window.removeEventListener("touchstart", resetIdle);
+      window.removeEventListener("keydown", resetIdle);
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    };
+  }, []);
+
+  // Called-token flash + beep: compare this poll's called/serving tokens
+  // against the previous poll's snapshot.
+  useEffect(() => {
+    const activeTokens = [...(queue?.called || []), ...(queue?.now_serving || [])];
     const activeKeys = new Set(activeTokens.map((token) => `${token.id}:${token.status}`));
-    if (previousActiveIds.current) {
-      const changedTokenIds = activeTokens
-        .filter((token) => !previousActiveIds.current.has(`${token.id}:${token.status}`))
+
+    if (previousActiveRef.current) {
+      const changedIds = activeTokens
+        .filter((token) => !previousActiveRef.current.has(`${token.id}:${token.status}`))
         .map((token) => token.id);
-      if (changedTokenIds.length) {
-        setHighlightedIds(new Set(changedTokenIds));
-        playSafeBeep();
-        const clearTimer = window.setTimeout(() => setHighlightedIds(new Set()), 3200);
-        previousActiveIds.current = activeKeys;
+      if (changedIds.length) {
+        setFlashIds(new Set(changedIds));
+        if (!muted) playSafeBeep();
+        const clearTimer = window.setTimeout(() => setFlashIds(new Set()), 3200);
+        previousActiveRef.current = activeKeys;
         return () => window.clearTimeout(clearTimer);
       }
     }
-    previousActiveIds.current = activeKeys;
-  }, [activeTokens]);
+    previousActiveRef.current = activeKeys;
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue]);
 
-  async function enterFullscreen() {
+  async function toggleFullscreen() {
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
-        setFullscreenMessage("Fullscreen closed.");
       } else if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
-        setFullscreenMessage("Fullscreen mode active.");
-      } else {
-        setFullscreenMessage("Fullscreen is not supported in this browser.");
       }
     } catch {
-      setFullscreenMessage("Fullscreen was blocked by the browser.");
-    }
-  }
-
-  function playSafeBeep() {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      const context = new AudioContext();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.frequency.value = 660;
-      gain.gain.value = 0.04;
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.12);
-    } catch {
-      // Browsers may block audio until the display has a user gesture.
+      // Fullscreen can be blocked by the browser without a fresh user
+      // gesture — the toggle simply stays in its current state.
     }
   }
 
   if (loading) {
     return (
-      <main className="display-shell">
-        <section className="loading-panel" aria-busy="true">
-          <RefreshCcw className="spin" size={28} aria-hidden="true" />
-          <h1>Loading Public Display</h1>
-          <p>Connecting to {API_BASE_URL}</p>
-        </section>
+      <main className="qf-board" aria-busy="true">
+        <div className="qf-board__loading">
+          <Skeleton height="72px" width="320px" radius="var(--r-lg)" />
+          <Skeleton height="1px" width="1px" />
+          <div className="qf-board__loading-grid">
+            <Skeleton height="220px" radius="var(--r-lg)" count={4} />
+          </div>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className={`display-shell ${kioskMode ? "kiosk-display" : ""}`}>
-      <header className="display-header">
-        <div>
-          <p className="eyebrow">QueueFlow AI Public Display</p>
-          <h1>Service Office Queue</h1>
-          {kioskMode ? <p className="display-kiosk-label">Kiosk mode</p> : null}
-        </div>
-        <div className="display-header-actions">
-          <button className="action-button secondary" type="button" onClick={enterFullscreen} data-testid="display-fullscreen">
-            <Maximize2 size={16} aria-hidden="true" />
-            <span>Fullscreen</span>
-          </button>
-          <div className="display-clock">
-            <Clock3 size={22} aria-hidden="true" />
-            <span>{formatTime(now.toISOString())}</span>
-          </div>
-        </div>
+    <main className={`qf-board ${kiosk ? "qf-board--kiosk" : ""} ${idle ? "is-idle" : ""}`} data-testid="public-display">
+      {/* Slow CRT/board scanline sweep — pure-transform, reduced-motion safe. */}
+      <div className="qf-board__scan" aria-hidden="true" />
+
+      <div className="qf-board__corner" aria-hidden={idle}>
+        <button
+          type="button"
+          className="qf-board__corner-btn"
+          onClick={toggleFullscreen}
+          data-testid="display-fullscreen"
+          aria-label={fullscreenOn ? "Exit fullscreen" : "Enter fullscreen"}
+          title={fullscreenOn ? "Exit fullscreen" : "Enter fullscreen"}
+        >
+          {fullscreenOn ? <Minimize2 size={ICON.md} aria-hidden="true" /> : <Maximize2 size={ICON.md} aria-hidden="true" />}
+        </button>
+        <button
+          type="button"
+          className={`qf-board__corner-btn ${kiosk ? "is-on" : ""}`}
+          onClick={() => setKiosk((value) => !value)}
+          data-testid="display-kiosk-toggle"
+          aria-pressed={kiosk}
+          aria-label={kiosk ? "Turn off kiosk mode" : "Turn on kiosk mode"}
+          title="Kiosk"
+        >
+          <MonitorPlay size={ICON.md} aria-hidden="true" />
+          <span>Kiosk</span>
+        </button>
+        <button
+          type="button"
+          className={`qf-board__corner-btn ${!muted ? "is-on" : ""}`}
+          onClick={() => setMuted((value) => !value)}
+          data-testid="display-mute-toggle"
+          aria-pressed={!muted}
+          aria-label={muted ? "Unmute call chime" : "Mute call chime"}
+          title={muted ? "Sound off" : "Sound on"}
+        >
+          {muted ? <VolumeX size={ICON.md} aria-hidden="true" /> : <Volume2 size={ICON.md} aria-hidden="true" />}
+        </button>
+      </div>
+
+      <div className="qf-board__clock mono" aria-label="Current time">
+        <Clock3 size={ICON.lg} aria-hidden="true" />
+        <span>{formatClock(now)}</span>
+      </div>
+
+      <header className="qf-board__header">
+        <p className="qf-eyebrow">QueueFlow AI · Public display</p>
+        <h1>Service office queue</h1>
+        <p className={`qf-board__status qf-board__status--${officeStatus.tone}`} data-testid="display-office-status">
+          <span className="qf-board__status-dot" aria-hidden="true" />
+          Office status: {officeStatus.label}
+        </p>
       </header>
 
       {error ? (
-        <div className="message-bar error" role="alert">
-          {error}
+        <div className="qf-board__error" role="alert" data-testid="display-error">
+          <AlertTriangle size={ICON.md} aria-hidden="true" />
+          <span>{error}</span>
         </div>
       ) : null}
 
-      <section className="display-message">
-        <MonitorUp size={28} aria-hidden="true" />
-        <strong>Please proceed only when your token is called.</strong>
-        <span className="display-office-status">Office status: Open and serving</span>
-      </section>
-      {fullscreenMessage ? <div className="display-mode-note" role="status">{fullscreenMessage}</div> : null}
-
-      <section className="display-summary-grid" aria-label="Queue summary">
-        <article>
-          <span>Now serving</span>
-          <strong>{queue?.now_serving?.length ?? 0}</strong>
-        </article>
-        <article>
-          <span>Called</span>
-          <strong>{queue?.called?.length ?? 0}</strong>
-        </article>
-        <article>
-          <span>Waiting citizens</span>
-          <strong>{queue?.waiting?.length ?? 0}</strong>
-        </article>
-        <article className="display-average-wait" data-testid="display-average-wait">
-          <span>Average wait</span>
-          <strong>{formatMinutes(queue?.average_wait_minutes)}</strong>
-        </article>
-      </section>
-
-      <section className="display-grid">
-        <section className="panel display-now-panel">
-          <div className="panel-header">
-            <div>
-              <p className="section-kicker">Live counters</p>
-              <h2>Now Serving</h2>
-            </div>
-          </div>
-
-          <div className="display-now-grid">
+      <section className="qf-board__now" aria-label="Now serving">
+        <h2 className="qf-board__section-title">Now serving</h2>
+        {counters.length ? (
+          <div className="qf-board__now-grid">
             {counters.map((counter) => {
               const token = counter.current_token_id ? tokensById.get(counter.current_token_id) : null;
-              const isPublicToken = token && ["called", "serving"].includes(token.status);
-              const displayState = isPublicToken ? token.status : counter.status === "paused" ? "paused" : "ready";
+              const isPublicToken = token && (token.status === "called" || token.status === "serving");
+              const isFlashing = isPublicToken && flashIds.has(token.id);
+              const cardState = isPublicToken ? token.status : counter.status === "paused" ? "paused" : "ready";
 
               return (
                 <article
-                  className={`display-counter-card display-counter-${displayState} ${
-                    isPublicToken && highlightedIds.has(token.id) ? "is-new-token" : ""
-                  }`}
+                  className={`qf-board__counter qf-board__counter--${cardState} qf-ticks ${isFlashing ? "is-flash" : ""}`}
                   key={counter.id}
                 >
-                  <span>{counter.name}</span>
+                  {isPublicToken ? (
+                    <BorderBeam colorFrom="var(--amber)" colorTo="var(--live)" />
+                  ) : null}
+                  <span className="qf-board__counter-name">{counter.name}</span>
                   {isPublicToken ? (
                     <>
-                      <strong>{token.token_number}</strong>
-                      <DisplayStatus status={token.status} />
-                      <p>{serviceName(servicesById, token.service_id)}</p>
+                      <SplitFlap
+                        value={token.token_number}
+                        size="xl"
+                        tone="amber"
+                        label={`Now serving token ${token.token_number}`}
+                      />
+                      <StatusChip status={token.status} />
+                      <p className="qf-board__counter-sub">{serviceName(servicesById, token.service_id)}</p>
                     </>
                   ) : counter.status === "paused" ? (
                     <>
-                      <strong>Paused</strong>
-                      <DisplayStatus status="paused" />
-                      <p>This counter is temporarily unavailable.</p>
+                      <SplitFlap value="--" size="xl" tone="muted" label="No token" />
+                      <p className="qf-board__counter-sub">This counter is temporarily unavailable.</p>
                     </>
                   ) : (
                     <>
-                      <strong>Ready</strong>
-                      <p>No token called at this counter.</p>
+                      <SplitFlap value="--" size="xl" tone="muted" label="No token" />
+                      <p className="qf-board__counter-sub">Ready for the next token.</p>
                     </>
                   )}
                 </article>
               );
             })}
           </div>
+        ) : (
+          <EmptyState
+            title="No counters are set up yet"
+            message="The office queue will appear here once counters are added."
+            compact
+          />
+        )}
+      </section>
 
-          {!activeTokens.length ? <div className="empty-state compact">No tokens are being served right now.</div> : null}
-        </section>
-
-        <section className="panel display-next-panel">
-          <div className="panel-header">
-            <div>
-              <p className="section-kicker">Upcoming</p>
-              <h2>Next Tokens</h2>
-            </div>
-            <span className="table-count">{waitingTokens.length} shown</span>
-          </div>
-
-          <div className="display-next-list">
-            {waitingTokens.map((token) => (
-              <article className="display-next-token" key={token.id}>
-                <div>
-                  <span>{token.token_number}</span>
-                  <strong>{serviceName(servicesById, token.service_id)}</strong>
-                </div>
-                <dl>
-                  <div>
-                    <dt>People ahead</dt>
-                    <dd>{token.people_ahead ?? "-"}</dd>
-                  </div>
-                  <div>
-                    <dt>Estimated</dt>
-                    <dd>{formatTime(token.estimated_service_time)}</dd>
-                  </div>
-                </dl>
+      <section className="qf-board__next" aria-label="Next up">
+        <div className="qf-board__section-head">
+          <h2 className="qf-board__section-title">Next up</h2>
+          {estimatesPaused ? (
+            // Same canonical copy used everywhere the estimate can be paused
+            // (see LABELS.estimatesPaused). Shown once here rather than
+            // repeated inside every compact next-up card below.
+            <p className="qf-board__paused-note">{LABELS.estimatesPaused}</p>
+          ) : null}
+        </div>
+        {nextUp.length ? (
+          <div className="qf-board__next-strip">
+            {nextUp.map((token) => (
+              <article className="qf-board__next-card" key={token.id}>
+                <SplitFlap value={token.token_number} size="sm" tone="default" label={`Token ${token.token_number}`} />
+                <span className="qf-board__next-service">{serviceName(servicesById, token.service_id)}</span>
+                <span className="qf-board__next-meta">
+                  {token.people_ahead ?? "-"} ahead · {token.estimated_service_time ? formatTime(token.estimated_service_time) : "--:--"}
+                </span>
               </article>
             ))}
           </div>
-
-          {!waitingTokens.length ? <div className="empty-state compact">No waiting tokens.</div> : null}
-        </section>
+        ) : (
+          <p className="qf-board__next-empty">No one is waiting right now.</p>
+        )}
       </section>
 
-      <footer className="display-footer">
-        <Ticket size={20} aria-hidden="true" />
-        <span>
-          Keep your token visible. Last updated {lastUpdated ? formatTime(lastUpdated.toISOString()) : "Pending"}.
+      <footer className="qf-board__footer">
+        <div className="qf-board__footer-stat" data-testid="display-average-wait">
+          <span>Average wait</span>
+          <strong className="mono">{formatMinutes(queue?.average_wait_minutes)}</strong>
+        </div>
+        <div className="qf-board__marquee" aria-live="polite">
+          <Marquee duration={18}>
+            <span>Please proceed only when your token is called.</span>
+          </Marquee>
+        </div>
+        <span className="qf-board__footer-updated">
+          Updated {lastUpdated ? formatClock(lastUpdated) : "--:--:--"}
         </span>
-        <Volume2 size={20} aria-hidden="true" />
       </footer>
     </main>
   );

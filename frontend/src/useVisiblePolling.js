@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /**
  * Runs `callback` on a fixed interval, but only while the document is visible.
@@ -57,4 +57,34 @@ export default function useVisiblePolling(callback, intervalMs, enabled = true) 
       stop();
     };
   }, [intervalMs, enabled]);
+}
+
+/**
+ * Guards against out-of-order poll responses. Call `begin()` at the start of a
+ * fetch cycle to get a token; before every `setState` that applies that
+ * cycle's result, check `token.isCurrent()`. Only the most recently started
+ * cycle is ever "current", so slow responses that resolve after a newer poll
+ * has begun are dropped instead of clobbering fresh data.
+ *
+ * Usage:
+ *   const { begin } = useLatestRequest();
+ *   const id = begin();
+ *   const data = await api.getQueueStatus();
+ *   if (!id.isCurrent()) return;   // a newer poll already ran
+ *   setQueue(data);
+ *
+ * @returns {{ begin: () => { id: number, isCurrent: () => boolean } }}
+ */
+export function useLatestRequest() {
+  const latestRef = useRef(0);
+
+  const begin = useCallback(() => {
+    const id = ++latestRef.current;
+    return {
+      id,
+      isCurrent: () => latestRef.current === id,
+    };
+  }, []);
+
+  return { begin };
 }

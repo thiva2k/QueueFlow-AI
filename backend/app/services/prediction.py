@@ -107,21 +107,32 @@ def count_people_ahead(db: Session, token: models.Token) -> int:
     ).count()
 
 
-def get_extra_delay_minutes(db: Session, now: datetime | None = None) -> float:
-    now = now or datetime.now(timezone.utc)
-    serving_tokens = db.query(models.Token).filter(models.Token.status == "serving").all()
-    extra_delay = 0.0
+def counter_overruns(db: Session, now: datetime | None = None) -> list[tuple[str, float]]:
+    """Single source of truth for live delay: (counter name, minutes over expected)
+    for every actively-serving counter currently running past its expected time.
 
-    for token in serving_tokens:
-        if not token.started_at or not token.service:
+    Both the ETA math and the human-facing delay display derive from this so the
+    number a citizen sees can never diverge from the number the engine uses.
+    """
+    now = now or datetime.now(timezone.utc)
+    overruns: list[tuple[str, float]] = []
+    counters = db.query(models.Counter).filter(models.Counter.current_token_id.isnot(None)).all()
+    for counter in counters:
+        token = db.get(models.Token, counter.current_token_id)
+        if not token or token.status != "serving" or not token.started_at or not token.service:
             continue
         started_at = ensure_aware(token.started_at)
-        current_duration = (now - started_at).total_seconds() / 60
-        expected_duration = token.service.default_duration_minutes
-        if current_duration > expected_duration:
-            extra_delay += current_duration - expected_duration
+        elapsed = (now - started_at).total_seconds() / 60
+        over = elapsed - token.service.default_duration_minutes
+        if over > 0:
+            overruns.append((counter.name, over))
+    overruns.sort(key=lambda item: item[1], reverse=True)
+    return overruns
 
-    return extra_delay
+
+def get_extra_delay_minutes(db: Session, now: datetime | None = None) -> float:
+    """Aggregate live overrun across all serving counters (shared computation)."""
+    return sum(over for _, over in counter_overruns(db, now))
 
 
 def get_confidence_minutes(db: Session, token: models.Token) -> float:
@@ -150,6 +161,9 @@ def no_show_risk(db: Session, token: models.Token, now: datetime | None = None) 
     if not token or token.status != "called":
         return None
     now = now or datetime.now(timezone.utc)
+    # Base rate is built only from missed vs completed visits. Voluntarily
+    # cancelled tokens are a distinct status and are deliberately excluded here
+    # so a citizen self-cancelling never inflates anyone's no-show risk.
     missed = db.query(models.Token).filter(models.Token.status == "missed").count()
     completed = db.query(models.Token).filter(models.Token.status == "completed").count()
     history = missed + completed
@@ -162,21 +176,9 @@ def no_show_risk(db: Session, token: models.Token, now: datetime | None = None) 
 
 
 def get_counter_delays(db: Session, now: datetime | None = None) -> list[tuple[str, float]]:
-    """(counter name, minutes over expected) for counters running late right now."""
-    now = now or datetime.now(timezone.utc)
-    delays: list[tuple[str, float]] = []
-    counters = db.query(models.Counter).filter(models.Counter.current_token_id.isnot(None)).all()
-    for counter in counters:
-        token = db.get(models.Token, counter.current_token_id)
-        if not token or token.status != "serving" or not token.started_at or not token.service:
-            continue
-        started_at = ensure_aware(token.started_at)
-        elapsed = (now - started_at).total_seconds() / 60
-        over = elapsed - token.service.default_duration_minutes
-        if over > 1:
-            delays.append((counter.name, over))
-    delays.sort(key=lambda item: item[1], reverse=True)
-    return delays
+    """Counters running meaningfully late (>1 min over) for display, derived from
+    the same shared overrun computation the ETA math uses."""
+    return [(name, over) for name, over in counter_overruns(db, now) if over > 1]
 
 
 def explain_prediction(db: Session, token: models.Token, now: datetime | None = None) -> dict:
@@ -193,7 +195,9 @@ def explain_prediction(db: Session, token: models.Token, now: datetime | None = 
     service_duration = max(get_service_duration(db, token.service, now), 1.0)
     learned = min(len(recent_service_durations(db, token.service)), LEARNING_WINDOW)
     delays = get_counter_delays(db, now)
-    total_delay = sum(over for _, over in delays)
+    # Displayed delay derives from the same shared overrun computation the ETA
+    # math uses, so the two can never diverge.
+    total_delay = get_extra_delay_minutes(db, now)
 
     factors: list[str] = []
     factors.append(
@@ -241,15 +245,55 @@ def explain_prediction(db: Session, token: models.Token, now: datetime | None = 
     }
 
 
-def predict_token(db: Session, token: models.Token, now: datetime | None = None) -> tuple[int, datetime, datetime]:
+def tokens_ahead(db: Session, token: models.Token) -> list[models.Token]:
+    return (
+        db.query(models.Token)
+        .filter(models.Token.status.in_(QUEUE_STATUSES), models.Token.id < token.id)
+        .order_by(models.Token.id)
+        .all()
+    )
+
+
+def ahead_service_duration(db: Session, token: models.Token, now: datetime | None = None) -> float:
+    """Average learned service time of the tokens actually ahead in the queue.
+
+    Time-to-clear depends on what the people in front of you are here for, not
+    on your own service — a queue of quick verifications clears faster than a
+    queue of licence renewals. Falls back to this token's own duration when the
+    queue ahead is empty.
+    """
     now = now or datetime.now(timezone.utc)
-    active_counters = max(count_active_counters(db), 1)
-    people_ahead = count_people_ahead(db, token)
+    ahead = tokens_ahead(db, token)
+    durations = [
+        max(get_service_duration(db, t.service, now), 1.0)
+        for t in ahead
+        if t.service is not None
+    ]
+    if durations:
+        return sum(durations) / len(durations)
     # Floor to 1 min so a misconfigured/zero-duration service can't zero out
     # every wait estimate.
-    service_duration = max(get_service_duration(db, token.service, now), 1.0)
+    return max(get_service_duration(db, token.service, now), 1.0)
+
+
+def predict_token(
+    db: Session, token: models.Token, now: datetime | None = None
+) -> tuple[int, datetime | None, datetime | None]:
+    now = now or datetime.now(timezone.utc)
+    active_counters = count_active_counters(db)
+    people_ahead = count_people_ahead(db, token)
+    # With no counters open there is no throughput to estimate against; hand the
+    # UI a paused state (null ETAs) instead of inventing a number.
+    if active_counters == 0:
+        return people_ahead, None, None
+
+    # Time-to-clear uses the actual services of the tokens ahead, not just this
+    # token's own duration.
+    service_duration = ahead_service_duration(db, token, now)
+    # Live overrun is attributed PER active counter (divided, not summed across
+    # counters) so extra delay scales the same way throughput does.
     extra_delay = get_extra_delay_minutes(db, now) if token.status in ("waiting", "called") else 0
-    estimated_wait = (people_ahead / active_counters) * service_duration + extra_delay
+    estimated_wait = (people_ahead * service_duration + extra_delay) / active_counters
     estimated_service_time = now + timedelta(minutes=estimated_wait)
     # Recommend arriving ARRIVAL_BUFFER minutes early, but never a time in the
     # past — if the turn is sooner than the buffer, the right advice is "now".

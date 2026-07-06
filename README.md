@@ -1,18 +1,31 @@
 # QueueFlow AI
 
-QueueFlow AI is a competition-ready smart queue management MVP for service offices. The current build includes a FastAPI backend, prediction-based queue engine, officer admin dashboard, citizen booking and token status pages, and a public display screen for counters or lobby projectors.
+QueueFlow AI is a competition-ready smart queue management MVP for service offices. The current build includes a FastAPI backend, a prediction-based queue engine with an explainable machine-learning service-time model, an officer admin dashboard with a live activity feed and an on-time SLA summary, an analytics insights page, citizen booking and token status pages with token cancellation and browser notifications, a printable ticket receipt, and a public display screen for counters or lobby projectors.
 
 ## Working URLs
 
 ```text
-Backend API:      http://127.0.0.1:8000
-API docs:         http://127.0.0.1:8000/docs
-Citizen booking:  http://127.0.0.1:5173/book
-Token status:     http://127.0.0.1:5173/token/A-021
-Admin dashboard:  http://127.0.0.1:5173/admin
-Public display:   http://127.0.0.1:5173/display
-Kiosk display:    http://127.0.0.1:5173/display?kiosk=true
+Backend API:        http://127.0.0.1:8000
+API docs:           http://127.0.0.1:8000/docs
+Citizen booking:    http://127.0.0.1:5173/book
+Check status:       http://127.0.0.1:5173/track
+Token status:       http://127.0.0.1:5173/token/A-021
+Admin dashboard:    http://127.0.0.1:5173/admin
+Analytics insights: http://127.0.0.1:5173/analytics
+Public display:     http://127.0.0.1:5173/display
+Kiosk display:      http://127.0.0.1:5173/display?kiosk=true
 ```
+
+## Features
+
+- **Predictive queue engine** — recalculates estimated service time and a recommended arrival time from live queue depth, active counters, and observed delays. When every counter is closed the estimates pause instead of showing stale numbers.
+- **Explainable ML service-time model** — a calibrated model predicts per-token service time and exposes the factors behind each estimate on the admin prediction panel.
+- **Citizen booking + printable ticket** — booking issues a token with a real QR code, a copyable status link, and a boarding-pass-style receipt that prints on its own (the print stylesheet reveals only the ticket).
+- **Token status + cancellation + notifications** — the status page live-polls position and arrival time, lets a citizen cancel a `waiting`/`called` token, and can raise an opt-in browser notification when it is nearly their turn.
+- **Status lookup** — `/track` finds a token by number and keeps a private, no-PII trail of recent tokens on the device (newest-first, max 5).
+- **Admin dashboard** — counter control, a live activity feed of recent queue events, and an on-time **SLA summary** (`good` / `warn` / `behind`) that flags counters running behind.
+- **Analytics insights** — `/analytics` aggregates totals plus hourly, per-service, and per-day breakdowns over a selectable window.
+- **Public display / kiosk** — a lobby board showing now-serving and called counters, next-up tokens, and average wait, with kiosk and mute preferences persisted on the device.
 
 ## Project Structure
 
@@ -318,15 +331,14 @@ Browser smoke prerequisites: backend venv installed, frontend dependencies insta
 - Demo data is synthetic.
 - No per-user login; staff endpoints use a single shared `STAFF_API_KEY` (open demo mode when unset).
 - SQLite on Render free-tier is ephemeral; production needs managed Postgres.
-- No real SMS, WhatsApp, payment, or ML model.
+- No real SMS, WhatsApp, or payment integration; citizen alerts use opt-in browser notifications only. Service-time prediction uses a lightweight on-device calibrated model, not a large external ML service.
 - Updates use polling instead of WebSockets.
 - QR codes are generated in the browser for local demo sharing.
 
 ## Future Improvements
 
 - Role-based officer login.
-- Real notification integrations.
+- Real SMS/WhatsApp notification integrations (browser notifications ship today).
 - Department/branch configuration.
-- Historical wait-time analytics.
 - WebSocket updates for public display and citizen pages.
 - Production kiosk hardening for locked-down lobby devices.

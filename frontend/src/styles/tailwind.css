@@ -1,0 +1,197 @@
+/* ============================================================================
+   QueueFlow AI — Tailwind v4 layer (Night Terminal v4)
+   Loaded AFTER styles.css: the :root tokens there remain the single source of
+   truth; this file maps them into Tailwind's theme so utilities like
+   bg-surface, text-live, border-line, font-display work everywhere, and adds
+   the 21st.dev-idiom effect utilities (bento spotlight, border beam, marquee).
+   ========================================================================== */
+@import "tailwindcss";
+
+@theme inline {
+  /* Colors — mapped to the Night Terminal CSS vars in styles.css */
+  --color-night: var(--bg0);
+  --color-night-1: var(--bg1);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-live: var(--live);
+  --color-live-soft: var(--live-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  /* Type */
+  --font-display: var(--display);
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+
+  /* Radii */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+}
+
+/* ============================================================================
+   Bento spotlight card (adapted from 21st.dev "Cybernetic Bento Grid" by
+   dhiluxui): a radial glow follows the cursor via --mouse-x/--mouse-y set by
+   the BentoCard component; a 1px gradient border brightens around the cursor.
+   ========================================================================== */
+@utility qf-bento {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 200ms ease, transform 200ms ease, box-shadow 250ms ease;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 350ms ease;
+    background: radial-gradient(
+      420px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(14, 124, 134, 0.07),
+      transparent 55%
+    );
+    pointer-events: none;
+  }
+  &:hover::before { opacity: 1; }
+  &:hover { border-color: var(--line-strong); box-shadow: var(--shadow); }
+}
+@utility qf-bento-amber {
+  &::before {
+    background: radial-gradient(
+      420px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(217, 119, 6, 0.08),
+      transparent 55%
+    );
+  }
+}
+
+/* ============================================================================
+   Border beam (MagicUI idiom): a bright dash orbits the card's border.
+   Used via <BorderBeam /> inside any relative rounded parent.
+   ========================================================================== */
+@keyframes qf-beam {
+  to { offset-distance: 100%; }
+}
+
+/* ============================================================================
+   Marquee (for tickers) — pair of tracks translating -50%.
+   ========================================================================== */
+@keyframes qf-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100% - var(--marquee-gap, 1rem))); }
+}
+
+/* ============================================================================
+   Aurora mesh (AuroraMesh) — living gradient blobs. Container clips + fades
+   its edges; blobs drift/scale on slow loops. Reduced-motion freezes them.
+   ========================================================================== */
+.qf-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(130% 120% at 50% 30%, #000 55%, transparent 100%);
+  mask-image: radial-gradient(130% 120% at 50% 30%, #000 55%, transparent 100%);
+}
+.qf-aurora__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  transform: translate(-50%, -50%);
+  will-change: transform;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+@keyframes qfAuroraA {
+  0% { transform: translate(-50%, -50%) scale(1) translate(0, 0); }
+  50% { transform: translate(-50%, -50%) scale(1.25) translate(6vw, -4vw); }
+  100% { transform: translate(-50%, -50%) scale(0.95) translate(-5vw, 5vw); }
+}
+@keyframes qfAuroraB {
+  0% { transform: translate(-50%, -50%) scale(1.1) translate(0, 0); }
+  50% { transform: translate(-50%, -50%) scale(0.9) translate(-7vw, 4vw); }
+  100% { transform: translate(-50%, -50%) scale(1.2) translate(5vw, -5vw); }
+}
+@keyframes qfAuroraC {
+  0% { transform: translate(-50%, -50%) scale(1) translate(0, 0); }
+  50% { transform: translate(-50%, -50%) scale(1.18) translate(-6vw, -5vw); }
+  100% { transform: translate(-50%, -50%) scale(0.92) translate(6vw, 4vw); }
+}
+
+/* Animated gradient sweep for the wordmark / hero highlight. */
+@keyframes qfGradientPan {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.qf-anim-gradient {
+  background-size: 220% 220%;
+  animation: qfGradientPan 6s ease-in-out infinite;
+}
+
+/* Civic-document motifs ------------------------------------------------------
+   MRZ strip: the machine-readable zone from passports — mono, spaced, faint. */
+@utility qf-mrz {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--ink-3);
+  user-select: none;
+}
+/* Perforation row: ticket tear line. */
+@utility qf-perf {
+  background-image: radial-gradient(circle, var(--line-strong) 1.2px, transparent 1.4px);
+  background-size: 12px 100%;
+  background-repeat: repeat-x;
+  background-position: center;
+  height: 3px;
+}
+/* Registration stamp: rotated bordered seal. */
+@utility qf-stamp {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: var(--fz-12);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  transform: rotate(-6deg);
+  opacity: 0.85;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.9 0'/%3E%3CfeComposite operator='in' in2='SourceGraphic'/%3E%3C/filter%3E%3Crect width='120' height='40' fill='%23fff' filter='url(%23r)'/%3E%3C/svg%3E");
+  mask-size: cover;
+}
+/* Corner ticks: technical-drawing register marks on a relative parent. */
+@utility qf-ticks {
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-color: var(--line-strong);
+    border-style: solid;
+    pointer-events: none;
+  }
+  &::before { top: 10px; left: 10px; border-width: 1px 0 0 1px; }
+  &::after { bottom: 10px; right: 10px; border-width: 0 1px 1px 0; }
+}
