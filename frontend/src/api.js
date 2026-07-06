@@ -1,6 +1,32 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-const STAFF_API_KEY = import.meta.env.VITE_STAFF_API_KEY;
+const BUILD_STAFF_API_KEY = import.meta.env.VITE_STAFF_API_KEY;
 const REQUEST_TIMEOUT_MS = 8000;
+const STAFF_KEY_STORAGE = "qf_staff_key";
+
+// A staff key entered at runtime (stored in sessionStorage) overrides the
+// build-time VITE_STAFF_API_KEY. sessionStorage is used so the key never
+// outlives the browser session and is never persisted to disk.
+function getStaffKey() {
+  try {
+    const runtime = sessionStorage.getItem(STAFF_KEY_STORAGE);
+    if (runtime && runtime.trim()) return runtime.trim();
+  } catch {
+    // sessionStorage may be unavailable (private mode / SSR) — fall through.
+  }
+  return BUILD_STAFF_API_KEY || null;
+}
+
+function setStaffKey(key) {
+  try {
+    if (key && String(key).trim()) {
+      sessionStorage.setItem(STAFF_KEY_STORAGE, String(key).trim());
+    } else {
+      sessionStorage.removeItem(STAFF_KEY_STORAGE);
+    }
+  } catch {
+    // Ignore storage failures — the caller still gets the current-request key.
+  }
+}
 
 function buildTimeoutSignal() {
   // Prefer the standard AbortSignal.timeout when available; fall back to a
@@ -18,6 +44,7 @@ function buildTimeoutSignal() {
 
 async function request(path, options = {}) {
   const { signal, cancel } = buildTimeoutSignal();
+  const staffKey = getStaffKey();
 
   let response;
   try {
@@ -27,7 +54,7 @@ async function request(path, options = {}) {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        ...(STAFF_API_KEY ? { "X-API-Key": STAFF_API_KEY } : {}),
+        ...(staffKey ? { "X-API-Key": staffKey } : {}),
         ...(options.headers || {}),
       },
     });
@@ -63,10 +90,65 @@ async function request(path, options = {}) {
     const detail = data?.detail || data?.message || response.statusText;
     const error = new Error(Array.isArray(detail) ? detail.map((item) => item.msg).join(", ") : detail);
     error.status = response.status;
+    // Preserve the structured validation payload so describeError can be smart.
+    if (Array.isArray(data?.detail)) error.validation = data.detail;
     throw error;
   }
 
   return data;
+}
+
+/**
+ * Translate any thrown API error into a single plain-language sentence that is
+ * safe to show a citizen: no URLs, no "backend"/"server" jargon, no stack noise.
+ * Always returns a non-empty string.
+ */
+function describeError(error) {
+  if (!error) return "Something went wrong. Please try again.";
+
+  const code = error.code;
+  const status = error.status;
+
+  if (code === "TIMEOUT") {
+    return "This is taking longer than expected. Please check your connection and try again.";
+  }
+  if (code === "NETWORK") {
+    return "We can't reach the service right now. Please check your connection and try again.";
+  }
+
+  if (typeof status === "number") {
+    if (status === 401 || status === 403) {
+      return "You don't have permission to do that. Please sign in with a staff key and try again.";
+    }
+    if (status === 404) {
+      return "We couldn't find that. Please double-check the details and try again.";
+    }
+    if (status === 409) {
+      return "That can't be done right now because the queue has already moved on. Please refresh and try again.";
+    }
+    if (status === 422 || status === 400) {
+      // Prefer a specific field message when the backend supplied one.
+      const first = Array.isArray(error.validation) ? error.validation[0] : null;
+      if (first?.msg) {
+        const msg = String(first.msg).replace(/^value error,?\s*/i, "").trim();
+        if (msg) return msg.charAt(0).toUpperCase() + msg.slice(1);
+      }
+      return "Please check the details you entered and try again.";
+    }
+    if (status === 429) {
+      return "You're going a little fast. Please wait a moment and try again.";
+    }
+    if (status >= 500) {
+      return "Something went wrong on our side. Please try again in a moment.";
+    }
+  }
+
+  // Fallback: never leak a URL or the word "backend".
+  const raw = typeof error.message === "string" ? error.message : "";
+  if (!raw || /https?:\/\//i.test(raw) || /backend|fetch|abort/i.test(raw)) {
+    return "Something went wrong. Please try again.";
+  }
+  return raw;
 }
 
 export const api = {
@@ -78,7 +160,10 @@ export const api = {
   getTokenPrediction: (tokenId) => request(`/tokens/${tokenId}/prediction`),
   getModelInfo: () => request("/model/info"),
   getQueueStatus: () => request("/queue/status"),
+  getSla: () => request("/queue/sla"),
+  getAnalytics: (days = 7) => request(`/admin/analytics?days=${encodeURIComponent(days)}`),
   createToken: (payload) => request("/tokens", { method: "POST", body: JSON.stringify(payload) }),
+  cancelToken: (tokenId) => request(`/tokens/${tokenId}/cancel`, { method: "POST" }),
   pauseCounter: (counterId) => request(`/counters/${counterId}/pause`, { method: "PATCH" }),
   resumeCounter: (counterId) => request(`/counters/${counterId}/resume`, { method: "PATCH" }),
   callNext: (counterId) => request(`/admin/call-next/${counterId}`, { method: "POST" }),
@@ -102,4 +187,4 @@ export const api = {
   },
 };
 
-export { API_BASE_URL };
+export { API_BASE_URL, describeError, setStaffKey, getStaffKey };

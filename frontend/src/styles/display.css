@@ -1,0 +1,350 @@
+/* ============================================================================
+   PublicDisplay ("/display") — the split-flap departure board.
+   Page-owned styles only (.qf-board* prefix). Tokens, the split-flap cells
+   (.qf-flap), and keyframes (calledFlash — now AMBER, pulse, shimmer,
+   reduced-motion overrides) all come from the foundation (src/styles.css).
+
+   This page is its own world: it paints a full-viewport near-black base with
+   a faint sodium-amber horizon glow at the bottom edge and a faint live-cyan
+   wash above. Everything is sized to read from ~6 metres — supporting text
+   never drops below 28px, and the "now serving" token flaps never drop below
+   96px on real board hardware (>=1920px) and NEVER line-wrap.
+   ========================================================================== */
+
+.qf-board {
+  /* Supporting text floor — clamps at >=28px (1.75rem) at every width. */
+  --board-support: clamp(1.75rem, 1.55rem + 0.5vw, 2rem);
+  /* Drive the xl SplitFlap through the foundation's --kiosk-token so the flap
+     row scales with the viewport and never wraps: >=96px (6rem) on >=1920px
+     board hardware, gracefully smaller on dev/laptop screens. */
+  --kiosk-token: clamp(4.25rem, 1rem + 5.4vw, 8.5rem);
+
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+  padding: var(--s6) var(--s7) var(--s7);
+  color: var(--ink);
+  overflow: hidden;
+  isolation: isolate;
+
+  /* Morning-light hall: porcelain base, marigold sunrise above,
+     a whisper of teal at the horizon. Calm and printed — no drift. */
+  background:
+    radial-gradient(100% 60% at 50% -14%, rgba(245, 158, 11, 0.10) 0%, transparent 58%),
+    radial-gradient(110% 50% at 50% 114%, rgba(14, 124, 134, 0.07) 0%, transparent 62%),
+    var(--bg0);
+}
+.qf-board--kiosk {
+  padding: var(--s7) var(--s8);
+}
+
+/* Content sits above the scanline overlay (which is z-index 0). ------------- */
+.qf-board__header,
+.qf-board__error,
+.qf-board__now,
+.qf-board__next,
+.qf-board__footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* Scanline retired in the Daylight Hall theme (CRT effects read sci-fi).
+   The JSX still renders the node; it stays inert. */
+.qf-board__scan { display: none; }
+
+/* Loading ------------------------------------------------------------------ */
+.qf-board__loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+  padding: var(--s6) 0;
+}
+.qf-board__loading-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--s5);
+}
+
+/* Fading corner affordance (fullscreen / kiosk / mute) --------------------- */
+.qf-board__corner {
+  position: fixed;
+  top: var(--s4);
+  right: var(--s4);
+  z-index: var(--z-nav);
+  display: flex;
+  gap: var(--s2);
+  padding: var(--s2);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+.qf-board.is-idle .qf-board__corner {
+  opacity: 0;
+  pointer-events: none;
+}
+.qf-board__corner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: var(--fz-12);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.qf-board__corner-btn span { display: none; }
+.qf-board__corner-btn:hover { background: var(--surface-2); color: var(--ink); }
+.qf-board__corner-btn.is-on {
+  color: var(--live-deep);
+  background: var(--live-soft);
+  border-color: rgba(14, 124, 134, 0.3);
+}
+
+/* Clock — fixed top-left, always visible, never fades ---------------------- */
+.qf-board__clock {
+  position: fixed;
+  top: var(--s4);
+  left: var(--s4);
+  z-index: var(--z-nav);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 0.5rem var(--s4);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  font-size: var(--kiosk-clock);
+  font-weight: 600;
+  color: var(--live);
+}
+
+/* Header ------------------------------------------------------------------- */
+.qf-board__header {
+  margin-top: clamp(3.5rem, 3rem + 2vw, 4.5rem);
+  text-align: center;
+}
+.qf-board__header h1 {
+  font-size: var(--kiosk-title);
+}
+.qf-board__status {
+  margin-top: var(--s3);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--mono);
+  font-size: var(--board-support);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.qf-board__status-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  flex-shrink: 0;
+}
+.qf-board__status--ok { color: var(--ok); }
+.qf-board__status--ok .qf-board__status-dot { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
+.qf-board__status--warn { color: var(--warn); }
+.qf-board__status--warn .qf-board__status-dot { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
+.qf-board__status--danger { color: var(--danger); }
+.qf-board__status--danger .qf-board__status-dot { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+
+/* Error strip -------------------------------------------------------------- */
+.qf-board__error {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  justify-content: center;
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r);
+  background: var(--danger-soft);
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  color: var(--danger);
+  font-size: var(--board-support);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Now serving — the split-flap mega cards ---------------------------------- */
+.qf-board__section-title {
+  font-family: var(--mono);
+  font-size: var(--fz-18);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s4);
+}
+/* Strict, uniform counter grid: 2-up on laptops, 4-up on board hardware —
+   never a lonely odd card on its own row, and every card the same height. */
+.qf-board__now-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s5);
+}
+@media (min-width: 1600px) {
+  .qf-board__now-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.qf-board__counter {
+  position: relative; /* anchors qf-ticks register marks + the BorderBeam */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s4);
+  min-width: 0;
+  min-height: clamp(280px, 24vw, 420px); /* idle and active cards match */
+  text-align: center;
+  padding: var(--s6) var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 200ms ease;
+}
+.qf-board__counter-name {
+  font-family: var(--mono);
+  font-size: var(--board-support);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.qf-board__counter-sub {
+  font-size: var(--board-support);
+  color: var(--ink-2);
+  line-height: 1.25;
+}
+
+/* Called / serving — SODIUM AMBER treatment (the call, not live data). The
+   token flaps carry tone="amber" from the JSX; the card echoes the glow. */
+.qf-board__counter--called,
+.qf-board__counter--serving {
+  background: linear-gradient(180deg, #FFF9EE 0%, #FDF3E0 100%);
+  border-color: rgba(217, 119, 6, 0.4);
+  box-shadow: var(--glow-amber);
+}
+.qf-board__counter--paused { opacity: 0.62; }
+
+/* Flash on change — foundation calledFlash pulses amber + --glow-amber. */
+.qf-board__counter.is-flash {
+  animation: calledFlash 1.1s ease 3;
+}
+
+/* Next up strip — small flap tokens that flip in on change ----------------- */
+.qf-board__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+.qf-board__section-head .qf-board__section-title { margin-bottom: 0; }
+.qf-board__paused-note {
+  font-size: var(--board-support);
+  color: var(--warn);
+  font-weight: 600;
+}
+.qf-board__next-strip {
+  display: flex;
+  gap: var(--s4);
+  overflow-x: auto;
+  padding-bottom: var(--s2);
+  scrollbar-width: thin;
+}
+.qf-board__next-card {
+  /* Fixed basis — every next-up tile identical width for a uniform strip. */
+  flex: 0 0 280px;
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+}
+.qf-board__next-service {
+  font-size: var(--board-support);
+  color: var(--ink-2);
+  line-height: 1.2;
+}
+.qf-board__next-meta {
+  font-size: var(--board-support);
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.qf-board__next-empty {
+  font-size: var(--board-support);
+  color: var(--ink-3);
+}
+
+/* Footer ticker + stats ---------------------------------------------------- */
+.qf-board__footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.qf-board__footer-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: var(--board-support);
+  color: var(--ink-2);
+  flex-shrink: 0;
+}
+.qf-board__footer-stat strong {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.75rem, 1.5rem + 0.8vw, 2.25rem);
+  color: var(--live);
+}
+.qf-board__marquee {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--board-support);
+  font-weight: 600;
+  color: var(--ink);
+}
+.qf-board__footer-updated {
+  font-family: var(--mono);
+  font-size: var(--fz-13);
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+/* Reduced motion — the kit <Marquee> and <BorderBeam> are stilled by the
+   global kill-switch in styles.css (animation-duration: 0.001ms). */
+
+/* Responsive --------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .qf-board { padding: var(--s5) var(--s4) var(--s6); }
+  .qf-board--kiosk { padding: var(--s5) var(--s4) var(--s6); }
+  .qf-board__now-grid { grid-template-columns: minmax(0, 1fr); }
+  .qf-board__counter { min-height: 220px; }
+  .qf-board__footer { flex-direction: column; align-items: stretch; }
+}

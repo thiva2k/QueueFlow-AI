@@ -107,6 +107,13 @@ class QueueStatusRead(BaseModel):
     estimated_wait_for_last_token: float | None
 
 
+class SlaSummary(BaseModel):
+    on_time_percent: float | None
+    sample_size: int
+    counters_behind: list[str]
+    status: str  # good | warn | behind | unknown
+
+
 class SeedSummary(BaseModel):
     services: int
     counters: int
