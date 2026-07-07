@@ -85,7 +85,7 @@ export default function SplitFlap({ value = "", size = "md", tone = "default", l
     <span
       className={`qf-flap qf-flap--${tone}`}
       style={{ "--flap-size": SIZES[size] || SIZES.md }}
-      role="text"
+      role="img"
       aria-label={label || String(value)}
     >
       {chars.map((ch, i) =>

@@ -525,7 +525,7 @@ export default function AdminDashboard() {
       <motion.div {...panelReveal}>
         <PageHeader
           eyebrow="Staff · operations"
-          title="QueueFlow AI Control Center"
+          title="QueueFlow AI Command Console"
           subtitle="Live counters, arrival predictions and queue health in one view."
           actions={
             <div className="qf-admin-headmeta">
@@ -637,7 +637,7 @@ export default function AdminDashboard() {
               compact
               icon={<Building2 size={ICON.lg} />}
               title="No counters configured"
-              message="Seed the demo data to add service counters."
+              message="Load the sample office from the Demo panel to add service counters."
             />
           )}
         </BentoCard>
@@ -776,7 +776,7 @@ export default function AdminDashboard() {
       <motion.section className="qf-bento qf-admin-panel" {...panelReveal}>
         <div className="qf-admin-panel__head">
           <p className="qf-eyebrow">SEC 04 · QUEUE</p>
-          <h2 className="qf-admin-panel__title">Waiting Citizens</h2>
+          <h2 className="qf-admin-panel__title">Waiting citizens</h2>
           <span className="qf-admin-panel__count mono">{waitingTokens.length}</span>
         </div>
         {waitingTokens.length ? (

@@ -126,7 +126,7 @@ function describeError(error) {
   const status = error.status;
 
   if (code === "TIMEOUT") {
-    return "This is taking longer than expected. Please check your connection and try again.";
+    return "The service is waking up — this can take up to a minute. Please wait a moment and try again.";
   }
   if (code === "NETWORK") {
     return "We can't reach the service right now. Please check your connection and try again.";

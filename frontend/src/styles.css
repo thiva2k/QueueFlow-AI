@@ -605,11 +605,11 @@ svg { display: inline-block; vertical-align: middle; }
 .qf-chip--live .qf-chip__dot { background: var(--live); box-shadow: 0 0 0 3px var(--live-soft); }
 .qf-chip--amber { color: #92400E; background: var(--amber-soft); border-color: rgba(217, 119, 6, 0.3); }
 .qf-chip--amber .qf-chip__dot { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); animation: pulse 2.4s ease-in-out infinite; }
-.qf-chip--ok { color: var(--ok); background: var(--ok-soft); border-color: rgba(21, 128, 61, 0.28); }
+.qf-chip--ok { color: #166534; background: var(--ok-soft); border-color: rgba(21, 128, 61, 0.28); }
 .qf-chip--ok .qf-chip__dot { background: var(--ok); }
-.qf-chip--danger { color: var(--danger); background: var(--danger-soft); border-color: rgba(220, 38, 38, 0.28); }
+.qf-chip--danger { color: #B91C1C; background: var(--danger-soft); border-color: rgba(220, 38, 38, 0.28); }
 .qf-chip--danger .qf-chip__dot { background: var(--danger); }
-.qf-chip--warn { color: var(--warn); background: var(--warn-soft); border-color: rgba(180, 83, 9, 0.3); }
+.qf-chip--warn { color: #92400E; background: var(--warn-soft); border-color: rgba(180, 83, 9, 0.3); }
 .qf-chip--warn .qf-chip__dot { background: var(--warn); }
 /* Pulse only on live chips. */
 .qf-chip--live .qf-chip__dot { animation: pulse 2.4s ease-in-out infinite; }
