@@ -7,6 +7,11 @@ const API_BASE_URL =
   (import.meta.env.PROD ? "https://queueflow-ai-backend.onrender.com" : "http://127.0.0.1:8000");
 const BUILD_STAFF_API_KEY = import.meta.env.VITE_STAFF_API_KEY;
 const REQUEST_TIMEOUT_MS = 8000;
+// Render's free tier sleeps after ~15 min idle and cold-boots in ~30-60s. Give
+// GET reads (the calls that fire on first page load) a budget long enough to
+// survive that wake-up, so the UI shows a loading state and recovers instead of
+// hard-failing at 8s. Mutations keep the short budget and fail fast.
+const COLD_START_TIMEOUT_MS = 45000;
 const STAFF_KEY_STORAGE = "qf_staff_key";
 
 // A staff key entered at runtime (stored in sessionStorage) overrides the
@@ -34,22 +39,27 @@ function setStaffKey(key) {
   }
 }
 
-function buildTimeoutSignal() {
+function buildTimeoutSignal(timeoutMs = REQUEST_TIMEOUT_MS) {
   // Prefer the standard AbortSignal.timeout when available; fall back to a
   // manually controlled AbortController for older runtimes.
   if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
-    return { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), cancel: () => {} };
+    return { signal: AbortSignal.timeout(timeoutMs), cancel: () => {} };
   }
   if (typeof AbortController !== "undefined") {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     return { signal: controller.signal, cancel: () => clearTimeout(timer) };
   }
   return { signal: undefined, cancel: () => {} };
 }
 
 async function request(path, options = {}) {
-  const { signal, cancel } = buildTimeoutSignal();
+  // Reads (GET) get the cold-start budget so the first load survives a sleeping
+  // backend; mutations fail fast on the short budget. An explicit options.timeoutMs
+  // overrides both.
+  const method = (options.method || "GET").toUpperCase();
+  const timeoutMs = options.timeoutMs || (method === "GET" ? COLD_START_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
+  const { signal, cancel } = buildTimeoutSignal(timeoutMs);
   const staffKey = getStaffKey();
 
   let response;
@@ -68,7 +78,7 @@ async function request(path, options = {}) {
     cancel();
     if (networkError?.name === "AbortError" || networkError?.name === "TimeoutError") {
       const timeoutError = new Error(
-        `Request to ${path} timed out after ${REQUEST_TIMEOUT_MS / 1000}s. The backend may be unreachable.`
+        `Request to ${path} timed out after ${timeoutMs / 1000}s. The backend may be unreachable.`
       );
       timeoutError.code = "TIMEOUT";
       throw timeoutError;
