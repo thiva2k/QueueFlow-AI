@@ -1,4 +1,10 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+// Resolve the API base defensively. A blank/whitespace VITE_API_BASE_URL in the
+// Vercel dashboard would otherwise be falsy and silently bake localhost into a
+// production build. Trim first, then fall back per environment: the real backend
+// in prod, localhost in dev — so an empty env var can never break the live site.
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL || "").trim() ||
+  (import.meta.env.PROD ? "https://queueflow-ai-backend.onrender.com" : "http://127.0.0.1:8000");
 const BUILD_STAFF_API_KEY = import.meta.env.VITE_STAFF_API_KEY;
 const REQUEST_TIMEOUT_MS = 8000;
 const STAFF_KEY_STORAGE = "qf_staff_key";

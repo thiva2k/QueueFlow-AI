@@ -66,11 +66,19 @@ function serviceName(servicesById, serviceId) {
   return servicesById.get(serviceId)?.name || "Service";
 }
 
+// One shared AudioContext for the life of the board. Allocating a new context
+// per chime leaks hardware pipelines and hits the browser's ~6-context cap on a
+// long-running wall display, after which new AudioContext() throws and the
+// chime silently dies. Reuse + resume avoids that entirely.
+let sharedAudioContext = null;
+
 function playSafeBeep() {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
-    const context = new AudioContext();
+    if (!sharedAudioContext) sharedAudioContext = new AudioContext();
+    const context = sharedAudioContext;
+    if (context.state === "suspended") context.resume();
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     oscillator.frequency.value = 660;

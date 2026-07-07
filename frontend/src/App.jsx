@@ -1,5 +1,5 @@
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import AnalyticsInsights from "./pages/AnalyticsInsights.jsx";
 import CitizenBooking from "./pages/CitizenBooking.jsx";
@@ -34,6 +34,7 @@ const STAFF_LINKS = [
 ];
 
 function NavLink({ link, route, onNavigate }) {
+  const reduce = useReducedMotion();
   const active = link.match.includes(route.name);
   return (
     <a
@@ -45,7 +46,7 @@ function NavLink({ link, route, onNavigate }) {
         onNavigate(link.path);
       }}
     >
-      {active ? <motion.span layoutId="qf-nav-pill" className="qf-navlink__pill" /> : null}
+      {active ? <motion.span layoutId="qf-nav-pill" className="qf-navlink__pill" transition={reduce ? { duration: 0 } : undefined} /> : null}
       <span className="qf-navlink__text">{link.label}</span>
     </a>
   );
@@ -166,6 +167,7 @@ export default function App() {
   // Landing + display own their full-page chrome (no standard nav/footer).
   const isImmersive = route.name === "display" || route.name === "landing";
   const routeKey = route.name + (route.tokenNumber ? `:${route.tokenNumber}` : "");
+  const reduce = useReducedMotion();
 
   return (
     <>
@@ -173,9 +175,9 @@ export default function App() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={routeKey}
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } }}
-          exit={{ opacity: 0, y: -8, transition: { duration: 0.16, ease: "easeIn" } }}
+          initial={reduce ? false : { opacity: 0, y: 14 }}
+          animate={reduce ? { opacity: 1, y: 0 } : { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8, transition: { duration: 0.16, ease: "easeIn" } }}
         >
           {page}
         </motion.div>

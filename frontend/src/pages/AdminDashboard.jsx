@@ -539,7 +539,7 @@ export default function AdminDashboard() {
       {openMode && !bannerDismissed ? (
         <div className="qf-admin-banner" role="status">
           <Info size={ICON.md} aria-hidden="true" />
-          <span>Demo mode — staff authentication is disabled on this server.</span>
+          <span>Demo mode — you're viewing a sample office with seeded data. Changes here won't affect a live queue.</span>
           <button
             type="button"
             className="qf-admin-banner__close"
