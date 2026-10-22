@@ -13,6 +13,10 @@ QUEUE_STATUSES = ("waiting", "called", "serving")
 # Recommend citizens arrive this many minutes before their estimated service.
 ARRIVAL_BUFFER = 15
 
+# Minutes per citizen when no service duration is configured. Matches the
+# primary seeded service (NIC Renewal). Zero would wipe the reported average.
+DEFAULT_SERVICE_MINUTES = 8
+
 # The model's time-of-day signal is trained on local office hours, so the
 # current hour must be read in the office's timezone, not UTC.
 try:
@@ -43,7 +47,7 @@ def get_average_service_duration(db: Session, service_id: int | None = None) -> 
     if service_id is not None:
         service_query = service_query.filter(models.Service.id == service_id)
     fallback = service_query.scalar()
-    return float(fallback or 0)
+    return float(fallback or DEFAULT_SERVICE_MINUTES)
 
 
 # How many recent completions feed the learned estimate, and how strongly the

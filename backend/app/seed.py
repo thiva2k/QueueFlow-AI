@@ -4,11 +4,11 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.database import get_session_local, init_db
-from app.services.prediction import recalculate_predictions
+from app.services.prediction import DEFAULT_SERVICE_MINUTES, recalculate_predictions
 
 
 SEED_SERVICES = [
-    ("NIC Renewal", 8),
+    ("NIC Renewal", DEFAULT_SERVICE_MINUTES),
     ("License Renewal", 12),
     ("Document Verification", 6),
 ]

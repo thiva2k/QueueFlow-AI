@@ -7,7 +7,7 @@ from app import models, schemas
 from app.auth import require_staff
 from app.database import get_db
 from app.seed import reset_demo_data, seed_demo_data
-from app.services.prediction import recalculate_predictions
+from app.services.prediction import DEFAULT_SERVICE_MINUTES, recalculate_predictions
 
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_staff)])
@@ -279,7 +279,7 @@ def simulate_delay(
     if token.status != "serving":
         raise HTTPException(status_code=400, detail="Only serving tokens can be delayed")
 
-    expected = token.service.default_duration_minutes if token.service else 8
+    expected = token.service.default_duration_minutes if token.service else DEFAULT_SERVICE_MINUTES
     token.started_at = datetime.now(timezone.utc) - timedelta(minutes=expected + extra_minutes)
     db.commit()
     recalculate_predictions(db)

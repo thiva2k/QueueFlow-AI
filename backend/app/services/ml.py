@@ -18,9 +18,13 @@ import math
 import random
 import threading
 
+from app.seed import SEED_SERVICES
+
 # Feature order used in training AND prediction: [hour, nominal_duration, queue_length]
 FEATURE_NAMES = ("time_of_day", "service_length", "queue_load")
 _TRAINING_SAMPLES = 800
+# Seeded catalog lengths. Sorted so reordering the seed list does not reshuffle draws.
+_NOMINAL_MINUTES = tuple(sorted(minutes for _, minutes in SEED_SERVICES))
 
 _model = None
 _meta = {"trained": False, "samples": 0, "importances": {}, "available": True, "data_source": "synthetic"}
@@ -37,7 +41,7 @@ def _synthetic_history(n: int = _TRAINING_SAMPLES):
     features, targets = [], []
     for _ in range(n):
         hour = rng.randint(8, 17)  # office hours, local time
-        nominal = rng.choice([6, 8, 12])  # representative service lengths
+        nominal = rng.choice(_NOMINAL_MINUTES)
         queue_length = rng.randint(0, 28)
         # Assumed mid-morning rush (~10am) + late-afternoon fatigue, heavier load drifts longer.
         hour_factor = 1.0 + 0.28 * math.exp(-((hour - 10) ** 2) / 6.0) + 0.16 * max(0, hour - 15) / 3.0
