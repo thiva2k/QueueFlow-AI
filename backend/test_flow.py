@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from urllib.error import HTTPError, URLError
@@ -22,6 +23,9 @@ def parse_time(value):
 def request_json(method, base_url, path, payload=None):
     data = None
     headers = {"Accept": "application/json"}
+    staff_key = os.environ.get("STAFF_API_KEY", "").strip()
+    if staff_key:
+        headers["X-API-Key"] = staff_key
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"

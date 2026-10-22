@@ -1,15 +1,8 @@
 """Staff authentication for privileged queue-control endpoints.
 
-Behaviour is intentionally environment-driven so the same build can run as a
-frictionless demo or a locked-down deployment:
-
-* ``STAFF_API_KEY`` **set**  -> every protected route requires a matching
-  ``X-API-Key`` header (401 otherwise). Use this in production.
-* ``STAFF_API_KEY`` **unset** -> "demo mode": routes stay open so judges can
-  click through the dashboard, and a warning is logged at startup.
-
-Citizen-facing read/booking endpoints are never gated; only counter/admin
-mutations and configuration writes are.
+``STAFF_API_KEY`` set: protected routes require a matching ``X-API-Key``
+header. Unset: those routes reject every request (fail closed). Citizen
+read/booking endpoints are never gated.
 """
 
 import hmac
@@ -33,10 +26,7 @@ def auth_enabled() -> bool:
 def require_staff(x_api_key: str | None = Header(default=None)) -> None:
     """FastAPI dependency that guards staff-only routes."""
     expected = get_staff_api_key()
-    if expected is None:
-        # Demo mode: no key configured, allow through.
-        return
-    if not x_api_key or not hmac.compare_digest(x_api_key, expected):
+    if not expected or not x_api_key or not hmac.compare_digest(x_api_key, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid staff API key",
@@ -49,6 +39,6 @@ def log_auth_mode() -> None:
         logger.info("Staff authentication ENABLED (STAFF_API_KEY is set).")
     else:
         logger.warning(
-            "Staff authentication DISABLED — running in demo mode. "
-            "Set STAFF_API_KEY to protect admin/counter endpoints in production."
+            "STAFF_API_KEY is unset — staff endpoints are locked. "
+            "Set STAFF_API_KEY before using admin or counter controls."
         )

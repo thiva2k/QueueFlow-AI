@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.auth import require_staff
 from app.database import get_db
+from app.routers.tokens import get_queue_status, list_tokens
 from app.seed import reset_demo_data, seed_demo_data
 from app.services.prediction import recalculate_predictions
 
@@ -39,6 +40,16 @@ def token_is_open(token: models.Token | None) -> bool:
 def ensure_counter_owns_token(counter: models.Counter, token: models.Token) -> None:
     if counter.current_token_id != token.id:
         raise HTTPException(status_code=400, detail="Token is not assigned to this counter")
+
+
+@router.get("/tokens", response_model=list[schemas.TokenRead])
+def list_staff_tokens(db: Session = Depends(get_db)):
+    return list_tokens(db)
+
+
+@router.get("/queue", response_model=schemas.QueueStatusRead)
+def staff_queue(db: Session = Depends(get_db)):
+    return get_queue_status(db)
 
 
 @router.post("/demo/seed", response_model=schemas.SeedSummary)

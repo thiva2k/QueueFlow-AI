@@ -1,11 +1,9 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-const BUILD_STAFF_API_KEY = import.meta.env.VITE_STAFF_API_KEY;
 const REQUEST_TIMEOUT_MS = 8000;
 const STAFF_KEY_STORAGE = "qf_staff_key";
 
-// A staff key entered at runtime (stored in sessionStorage) overrides the
-// build-time VITE_STAFF_API_KEY. sessionStorage is used so the key never
-// outlives the browser session and is never persisted to disk.
+// Entered at runtime and kept in sessionStorage so the key is not baked into
+// the public JS bundle and does not outlive the browser session.
 function getStaffKey() {
   try {
     const runtime = sessionStorage.getItem(STAFF_KEY_STORAGE);
@@ -13,7 +11,7 @@ function getStaffKey() {
   } catch {
     // sessionStorage may be unavailable (private mode / SSR) — fall through.
   }
-  return BUILD_STAFF_API_KEY || null;
+  return null;
 }
 
 function setStaffKey(key) {
@@ -156,6 +154,8 @@ export const api = {
   getServices: () => request("/services"),
   getCounters: () => request("/counters"),
   getTokens: () => request("/tokens"),
+  getStaffTokens: () => request("/admin/tokens"),
+  getStaffQueue: () => request("/admin/queue"),
   getTokenByNumber: (tokenNumber) => request(`/tokens/by-number/${encodeURIComponent(tokenNumber)}`),
   getTokenPrediction: (tokenId) => request(`/tokens/${tokenId}/prediction`),
   getModelInfo: () => request("/model/info"),
@@ -187,4 +187,4 @@ export const api = {
   },
 };
 
-export { API_BASE_URL, describeError, setStaffKey, getStaffKey };
+export { API_BASE_URL, describeError, setStaffKey };

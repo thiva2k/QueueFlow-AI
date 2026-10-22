@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Cpu,
   FlaskConical,
-  Info,
   Lock,
   Pause,
   PhoneCall,
@@ -21,7 +20,6 @@ import {
   TimerReset,
   UserPlus,
   Users,
-  X,
   XCircle,
 } from "lucide-react";
 import {
@@ -38,7 +36,7 @@ import {
 import SplitFlap from "../components/SplitFlap.jsx";
 import { BentoCard, BorderBeam } from "../components/ui/index.js";
 import { ICON, LABELS } from "../constants.js";
-import { api, describeError, getStaffKey, setStaffKey } from "../api.js";
+import { api, describeError, setStaffKey } from "../api.js";
 import useVisiblePolling, { useLatestRequest } from "../useVisiblePolling.js";
 import "../styles/admin.css";
 
@@ -179,8 +177,6 @@ export default function AdminDashboard() {
 
   // Staff access probe: "checking" | "granted" | "locked"
   const [access, setAccess] = useState("checking");
-  const [openMode, setOpenMode] = useState(false);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
 
   const [queue, setQueue] = useState(null);
@@ -227,7 +223,6 @@ export default function AdminDashboard() {
   const probeAccess = useCallback(async () => {
     try {
       await api.getAnalytics(1);
-      setOpenMode(!getStaffKey());
       setAccess("granted");
       return true;
     } catch (error) {
@@ -237,7 +232,6 @@ export default function AdminDashboard() {
       }
       // A non-auth failure (server down / transient) shouldn't lock the operator
       // out — let the dashboard load and surface its own inline error.
-      setOpenMode(!getStaffKey());
       setAccess("granted");
       return true;
     }
@@ -305,7 +299,7 @@ export default function AdminDashboard() {
 
     let queueData;
     try {
-      queueData = await api.getQueueStatus();
+      queueData = await api.getStaffQueue();
     } catch (error) {
       if (!req.isCurrent()) return;
       setLoadError(describeError(error));
@@ -319,7 +313,7 @@ export default function AdminDashboard() {
     const [servicesR, countersR, tokensR, slaR] = await Promise.allSettled([
       api.getServices(),
       api.getCounters(),
-      api.getTokens(),
+      api.getStaffTokens(),
       api.getSla(),
     ]);
     if (!req.isCurrent()) return;
@@ -535,21 +529,6 @@ export default function AdminDashboard() {
           }
         />
       </motion.div>
-
-      {openMode && !bannerDismissed ? (
-        <div className="qf-admin-banner" role="status">
-          <Info size={ICON.md} aria-hidden="true" />
-          <span>Demo mode — staff authentication is disabled on this server.</span>
-          <button
-            type="button"
-            className="qf-admin-banner__close"
-            aria-label="Dismiss notice"
-            onClick={() => setBannerDismissed(true)}
-          >
-            <X size={ICON.sm} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
 
       {loadError ? (
         <div className="qf-admin-alert" role="alert">

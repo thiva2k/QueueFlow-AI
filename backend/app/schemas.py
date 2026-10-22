@@ -58,16 +58,17 @@ class TokenCreate(BaseModel):
     service_id: int
 
 
-class TokenRead(UTCDateTimeModel):
+class TokenPublic(UTCDateTimeModel):
+    """Citizen/public token shape.
+
+    nic_or_phone is never returned. citizen_name is staff-only (TokenRead)
+    so a public list cannot be enumerated for names.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     token_number: str
-    citizen_name: str
-    # nic_or_phone is intentionally NOT exposed in read responses: it is
-    # national-ID / phone PII and the UI never displays it. It is accepted on
-    # create (TokenCreate) and stored, but never returned, preventing bulk PII
-    # harvesting via token enumeration.
     service_id: int
     status: str
     created_at: datetime
@@ -79,6 +80,10 @@ class TokenRead(UTCDateTimeModel):
     actual_duration_minutes: float | None
     people_ahead: int | None = None
     no_show_risk: int | None = None
+
+
+class TokenRead(TokenPublic):
+    citizen_name: str
 
 
 class PredictionRead(UTCDateTimeModel):
@@ -95,16 +100,22 @@ class PredictionRead(UTCDateTimeModel):
     factors: list[str] = Field(default_factory=list)
 
 
-class QueueStatusRead(BaseModel):
-    now_serving: list[TokenRead]
-    waiting: list[TokenRead]
-    called: list[TokenRead]
+class QueueStatusPublic(BaseModel):
+    now_serving: list[TokenPublic]
+    waiting: list[TokenPublic]
+    called: list[TokenPublic]
     completed_count: int
     missed_count: int
     active_counters: int
     average_service_duration: float
     average_wait_minutes: float | None
     estimated_wait_for_last_token: float | None
+
+
+class QueueStatusRead(QueueStatusPublic):
+    now_serving: list[TokenRead]
+    waiting: list[TokenRead]
+    called: list[TokenRead]
 
 
 class SlaSummary(BaseModel):
