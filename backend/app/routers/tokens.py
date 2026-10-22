@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
 from app.services.prediction import (
+    DEFAULT_SERVICE_MINUTES,
     count_active_counters,
     count_people_ahead,
     explain_prediction,
@@ -195,7 +196,7 @@ def get_queue_sla(db: Session = Depends(get_db)):
 
     on_time = 0
     for token in completed:
-        default = token.service.default_duration_minutes if token.service else 0
+        default = token.service.default_duration_minutes if token.service else DEFAULT_SERVICE_MINUTES
         if token.actual_duration_minutes <= default * 1.15:
             on_time += 1
 
