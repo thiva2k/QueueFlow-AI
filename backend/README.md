@@ -79,6 +79,7 @@ See `backend/.env.example`. All are optional for a local demo.
 ## Test
 
 ```powershell
+python -m pip install -r requirements-dev.txt
 python -m pytest
 ```
 
