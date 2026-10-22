@@ -47,26 +47,27 @@ http://127.0.0.1:8000/docs
 
 ## Environment Variables
 
-See `backend/.env.example`. All are optional for a local demo.
+See `backend/.env.example`. Citizen pages work without these. Staff routes require `STAFF_API_KEY`.
 
 - `CORS_ORIGINS` — comma-separated allowed browser origins (no trailing slash).
   In production this MUST include the deployed frontend origin.
 - `QUEUEFLOW_DATABASE_URL` — database URL. Defaults to local SQLite
   (`sqlite:///./queueflow.db`). Use a managed Postgres URL in production.
-- `STAFF_API_KEY` — when set, all admin/counter/service-mutation endpoints
-  require an `X-API-Key: <value>` header (401 otherwise). When unset, the API
-  runs in open demo mode and logs a warning at startup. The frontend can send
-  this header when built with `VITE_STAFF_API_KEY`.
+- `STAFF_API_KEY` — required for admin/counter/service-mutation endpoints
+  (`X-API-Key` header, 401 otherwise). When unset, those routes reject every
+  request. Staff enter the same value in the dashboard at runtime.
 - `SEED_ON_START` (default `true`) — auto-seeds demo data when the database is
   empty on startup. Set to `false` for a real deployment so production data is
   never auto-overwritten.
 
 ## Production Notes / Security
 
-- **Staff auth** — `STAFF_API_KEY` gates admin/counter/service mutations;
-  citizen read/booking endpoints are never gated. See `app/auth.py`.
-- **PII protection** — `nic_or_phone` is accepted and stored on token creation
-  but never returned in any API read response (see `app/schemas.py`).
+- **Staff auth** — `STAFF_API_KEY` gates admin/counter/service mutations and
+  fails closed when unset. Citizen read/booking endpoints are never gated.
+  See `app/auth.py`.
+- **PII protection** — `nic_or_phone` is never returned. `citizen_name` is
+  omitted from public token and queue responses and returned only by staff
+  endpoints (`app/schemas.py`).
 - **Atomic token claiming** — `call-next` uses a conditional
   `UPDATE ... WHERE status = 'waiting'`, preventing two counters from
   double-serving the same token under concurrency (see `app/routers/admin.py`).
@@ -89,14 +90,16 @@ Start the backend in one terminal:
 ```powershell
 cd backend
 .\.venv\Scripts\Activate.ps1
+$env:STAFF_API_KEY = "<long-random-string>"
 uvicorn app.main:app --reload
 ```
 
-Then run the smoke test in a second terminal:
+Then run the smoke test in a second terminal with the same key:
 
 ```powershell
 cd backend
 .\.venv\Scripts\Activate.ps1
+$env:STAFF_API_KEY = "<long-random-string>"
 python test_flow.py
 ```
 

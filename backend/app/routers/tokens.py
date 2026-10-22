@@ -35,7 +35,7 @@ def get_token_or_404(db: Session, token_id: int) -> models.Token:
     return token
 
 
-@router.post("/tokens", response_model=schemas.TokenRead, status_code=status.HTTP_201_CREATED)
+@router.post("/tokens", response_model=schemas.TokenPublic, status_code=status.HTTP_201_CREATED)
 def create_token(payload: schemas.TokenCreate, db: Session = Depends(get_db)):
     service = db.get(models.Service, payload.service_id)
     if not service:
@@ -66,13 +66,13 @@ def create_token(payload: schemas.TokenCreate, db: Session = Depends(get_db)):
     return token_to_read(db, token)
 
 
-@router.get("/tokens", response_model=list[schemas.TokenRead])
+@router.get("/tokens", response_model=list[schemas.TokenPublic])
 def list_tokens(db: Session = Depends(get_db)):
     tokens = db.query(models.Token).order_by(models.Token.id).all()
     return [token_to_read(db, token) for token in tokens]
 
 
-@router.get("/tokens/by-number/{token_number}", response_model=schemas.TokenRead)
+@router.get("/tokens/by-number/{token_number}", response_model=schemas.TokenPublic)
 def get_token_by_number(token_number: str, db: Session = Depends(get_db)):
     token = db.query(models.Token).filter(models.Token.token_number == token_number).first()
     if not token:
@@ -80,7 +80,7 @@ def get_token_by_number(token_number: str, db: Session = Depends(get_db)):
     return token_to_read(db, token)
 
 
-@router.post("/tokens/{token_id}/cancel", response_model=schemas.TokenRead)
+@router.post("/tokens/{token_id}/cancel", response_model=schemas.TokenPublic)
 def cancel_token(token_id: int, db: Session = Depends(get_db)):
     """Citizen self-service cancellation (ungated).
 
@@ -120,7 +120,7 @@ def get_token_prediction(token_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/tokens/{token_id}", response_model=schemas.TokenRead)
+@router.get("/tokens/{token_id}", response_model=schemas.TokenPublic)
 def get_token(token_id: int, db: Session = Depends(get_db)):
     return token_to_read(db, get_token_or_404(db, token_id))
 
@@ -133,7 +133,7 @@ def get_model_info():
     return ml.model_info()
 
 
-@router.get("/queue/status", response_model=schemas.QueueStatusRead)
+@router.get("/queue/status", response_model=schemas.QueueStatusPublic)
 def get_queue_status(db: Session = Depends(get_db)):
     tokens = db.query(models.Token).order_by(models.Token.id).all()
     now_serving = [token_to_read(db, token) for token in tokens if token.status == "serving"]

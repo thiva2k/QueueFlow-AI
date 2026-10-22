@@ -131,14 +131,13 @@ Optional backend environment variables (see `backend/.env.example`):
 
 ```text
 QUEUEFLOW_DATABASE_URL=sqlite:///./queueflow.db   # use a managed Postgres URL in production
-STAFF_API_KEY=<long-random-string>                # when set, staff endpoints require an X-API-Key header
+STAFF_API_KEY=<long-random-string>                # required; staff endpoints reject requests when unset
 SEED_ON_START=true                                # auto-seed demo data when the DB is empty (default true)
 ```
 
-- **STAFF_API_KEY** — when set, all admin/counter/service-mutation endpoints
-  require an `X-API-Key: <value>` header; when unset, the API runs in open demo
-  mode (a warning is logged at startup). The frontend forwards this header when
-  built with `VITE_STAFF_API_KEY` set.
+- **STAFF_API_KEY** — required for admin/counter/service-mutation endpoints.
+  They reject every request when it is unset. Staff type the same value into
+  the dashboard; it is sent as `X-API-Key` for that browser session only.
 - **SEED_ON_START** (default `true`) — auto-seeds demo data when the database is
   empty on startup. Set to `false` for a real deployment so production data is
   never auto-overwritten.
@@ -185,8 +184,9 @@ This is baked into the Vite build, so you do NOT need to set
 > variable unset (or matching the file). An empty dashboard value silently makes
 > the deployed site fall back to `http://127.0.0.1:8000` and break.
 
-Optionally, to forward a staff API key from the frontend, set
-`VITE_STAFF_API_KEY` in the Vercel dashboard to match the backend `STAFF_API_KEY`.
+Do not set a staff key in Vercel. `VITE_*` variables are compiled into the public
+JavaScript bundle. Staff enter `STAFF_API_KEY` on the admin sign-in screen at
+runtime.
 
 The frontend falls back to `http://127.0.0.1:8000` for local development when `VITE_API_BASE_URL` is not set.
 
@@ -231,12 +231,13 @@ Before presenting:
 
 QueueFlow AI went through a production-hardening pass. Key points:
 
-- **Staff API-key auth** — set `STAFF_API_KEY` so admin/counter/service-mutation
-  endpoints require an `X-API-Key` header. Unset means open demo mode (warning
-  logged at startup). Citizen read/booking endpoints are never gated.
-- **PII protection** — `nic_or_phone` (national-ID / phone) is accepted and
-  stored on token creation but is never returned in any API read response,
-  preventing bulk PII exposure.
+- **Staff API-key auth** — admin/counter/service-mutation endpoints require
+  `X-API-Key` matching `STAFF_API_KEY`. They reject requests when the key is
+  unset. Citizen read/booking endpoints are never gated. The dashboard collects
+  the key at runtime; it is not a frontend build variable.
+- **PII protection** — `nic_or_phone` is stored on token creation but never
+  returned. `citizen_name` is omitted from public token and queue responses
+  and returned only by staff endpoints.
 - **Atomic token claiming** — calling the next token uses a conditional
   `UPDATE ... WHERE status = 'waiting'`, so two counters cannot claim and
   double-serve the same token under concurrency.
@@ -312,6 +313,7 @@ Backend:
 cd backend
 .\.venv\Scripts\Activate.ps1
 python -m pytest
+$env:STAFF_API_KEY = "<same value as the running backend>"
 python test_flow.py
 ```
 
@@ -329,7 +331,7 @@ Browser smoke prerequisites: backend venv installed, frontend dependencies insta
 ## Known Limitations
 
 - Demo data is synthetic.
-- No per-user login; staff endpoints use a single shared `STAFF_API_KEY` (open demo mode when unset).
+- No per-user login; staff endpoints share one `STAFF_API_KEY`, entered in the dashboard. They reject requests when that key is unset.
 - SQLite on Render free-tier is ephemeral; production needs managed Postgres.
 - No real SMS, WhatsApp, or payment integration; citizen alerts use opt-in browser notifications only. Service-time prediction uses a lightweight on-device calibrated model, not a large external ML service.
 - Updates use polling instead of WebSockets.

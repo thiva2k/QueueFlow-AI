@@ -6,6 +6,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+TEST_STAFF_KEY = "test-staff-key"
+
 
 def parse_iso(value):
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -15,6 +17,7 @@ def parse_iso(value):
 def make_client(tmp_path):
     db_path = tmp_path / "queueflow_test.db"
     os.environ["QUEUEFLOW_DATABASE_URL"] = f"sqlite:///{db_path}"
+    os.environ["STAFF_API_KEY"] = TEST_STAFF_KEY
 
     backend_path = Path(__file__).resolve().parents[1]
     if str(backend_path) not in sys.path:
@@ -24,7 +27,9 @@ def make_client(tmp_path):
     import app.main as main
 
     database.init_db()
-    return TestClient(main.app)
+    client = TestClient(main.app)
+    client.headers.update({"X-API-Key": TEST_STAFF_KEY})
+    return client
 
 
 def seed_demo(client):
@@ -496,8 +501,12 @@ def test_pii_is_never_returned_in_read_responses(tmp_path):
     assert "nic_or_phone" not in by_number
     assert "nic_or_phone" not in one
     assert all("nic_or_phone" not in t for t in listed)
+    assert "citizen_name" not in by_number
+    assert "citizen_name" not in one
+    assert all("citizen_name" not in t for t in listed)
     for bucket in ("now_serving", "waiting", "called"):
         assert all("nic_or_phone" not in t for t in queue[bucket])
+        assert all("citizen_name" not in t for t in queue[bucket])
 
 
 # --- Authentication --------------------------------------------------------
@@ -687,6 +696,7 @@ def test_staff_endpoints_require_api_key_when_configured(tmp_path):
     counter = client.get("/counters").json()[0]
 
     os.environ["STAFF_API_KEY"] = "s3cret-demo-key"
+    client.headers.pop("X-API-Key", None)
     try:
         # Without the key -> 401.
         unauth = client.post(f"/admin/call-next/{counter['id']}")
@@ -710,7 +720,52 @@ def test_staff_endpoints_require_api_key_when_configured(tmp_path):
         )
         assert wrong.status_code == 401
     finally:
-        os.environ.pop("STAFF_API_KEY", None)
+        os.environ["STAFF_API_KEY"] = TEST_STAFF_KEY
+        client.headers["X-API-Key"] = TEST_STAFF_KEY
+
+
+def test_public_responses_omit_names_and_admin_fails_closed(tmp_path):
+    client = make_client(tmp_path)
+    seed_demo(client)
+    service_id = client.get("/services").json()[0]["id"]
+
+    listed = client.get("/tokens").json()
+    assert listed and all("citizen_name" not in token for token in listed)
+    assert "citizen_name" not in client.get(f"/tokens/{listed[0]['id']}").json()
+    queue = client.get("/queue/status").json()
+    for bucket in ("now_serving", "waiting", "called"):
+        assert all("citizen_name" not in token for token in queue[bucket])
+
+    created = client.post(
+        "/tokens",
+        json={"citizen_name": "Asha Perera", "nic_or_phone": "0771234567", "service_id": service_id},
+    )
+    assert created.status_code == 201
+    assert "citizen_name" not in created.json()
+
+    staff_tokens = client.get("/admin/tokens").json()
+    assert any(token["citizen_name"] == "Asha Perera" for token in staff_tokens)
+    staff_queue = client.get("/admin/queue").json()
+    assert any(
+        token["citizen_name"] == "Asha Perera"
+        for token in staff_queue["waiting"] + staff_queue["now_serving"] + staff_queue["called"]
+    )
+    counter_id = client.get("/counters").json()[0]["id"]
+    called = client.post(f"/admin/call-next/{counter_id}")
+    assert called.status_code == 200
+    assert called.json()["citizen_name"]
+
+    os.environ.pop("STAFF_API_KEY", None)
+    client.headers.pop("X-API-Key", None)
+    try:
+        public_tokens = client.get("/tokens").json()
+        assert public_tokens and all("citizen_name" not in token for token in public_tokens)
+        assert client.get("/admin/tokens").status_code == 401
+        assert client.get("/admin/analytics").status_code == 401
+        assert client.post(f"/admin/call-next/{counter_id}").status_code == 401
+    finally:
+        os.environ["STAFF_API_KEY"] = TEST_STAFF_KEY
+        client.headers["X-API-Key"] = TEST_STAFF_KEY
 
 
 # --- Cancellation ----------------------------------------------------------
@@ -862,12 +917,14 @@ def test_analytics_is_staff_gated(tmp_path):
     seed_demo(client)
 
     os.environ["STAFF_API_KEY"] = "s3cret-demo-key"
+    client.headers.pop("X-API-Key", None)
     try:
         assert client.get("/admin/analytics").status_code == 401
         ok = client.get("/admin/analytics", headers={"X-API-Key": "s3cret-demo-key"})
         assert ok.status_code == 200
     finally:
-        os.environ.pop("STAFF_API_KEY", None)
+        os.environ["STAFF_API_KEY"] = TEST_STAFF_KEY
+        client.headers["X-API-Key"] = TEST_STAFF_KEY
 
 
 # --- Delay attribution -----------------------------------------------------

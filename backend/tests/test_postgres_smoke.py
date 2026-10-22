@@ -41,9 +41,10 @@ def client():
     import app.main as main
 
     # Fresh schema for an isolated run.
+    os.environ["STAFF_API_KEY"] = "test-staff-key"
     database.Base.metadata.drop_all(bind=database.get_engine())
     database.init_db()
-    with TestClient(main.app) as c:
+    with TestClient(main.app, headers={"X-API-Key": "test-staff-key"}) as c:
         yield c
     database.Base.metadata.drop_all(bind=database.get_engine())
 
@@ -70,7 +71,9 @@ def test_id_based_numbering_and_pii_redaction_on_postgres(client):
     numbers = [t["token_number"] for t in client.get("/tokens").json()]
     assert len(numbers) == len(set(numbers))  # all unique
     assert "nic_or_phone" not in body
-    assert all("nic_or_phone" not in t for t in client.get("/tokens").json())
+    assert "citizen_name" not in body
+    listed = client.get("/tokens").json()
+    assert all("nic_or_phone" not in t and "citizen_name" not in t for t in listed)
 
 
 def test_concurrent_call_next_is_unique_on_postgres(client):

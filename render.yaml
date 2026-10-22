@@ -18,8 +18,8 @@ services:
       # Must include the deployed frontend origin or the browser blocks the API.
       - key: CORS_ORIGINS
         value: https://queueflow-ai.vercel.app,https://project-0ppn4.vercel.app,http://localhost:5173,http://127.0.0.1:5173
-      # Staff API key for admin/counter endpoints. Set a real secret value in the
-      # Render dashboard (sync: false keeps it out of the blueprint/git). When
-      # unset, the API runs in open demo mode.
+      # Staff API key for admin/counter endpoints. Set a real secret in the
+      # Render dashboard (sync: false keeps it out of git). When unset, those
+      # endpoints reject requests.
       - key: STAFF_API_KEY
         sync: false
