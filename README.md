@@ -311,6 +311,7 @@ Backend:
 ```powershell
 cd backend
 .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
 python -m pytest
 python test_flow.py
 ```

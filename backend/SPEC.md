@@ -13,6 +13,7 @@ Build a minimal FastAPI backend for a smart queue system that issues tokens, tra
 
 ## Commands
 - Install: `python -m pip install -r requirements.txt`
+- Test install: `python -m pip install -r requirements-dev.txt`
 - Seed: `python -m app.seed`
 - Dev: `uvicorn app.main:app --reload`
 - Test: `python -m pytest`
